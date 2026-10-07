@@ -1,6 +1,6 @@
 import React,{useState,useEffect,useRef,useCallback} from 'react';
 import RFB from '@novnc/novnc';
-import {Sparkles,ArrowUpRight,ArrowRight,MapPin,Settings2,Play,Pause,Monitor,Check,CheckCircle2,Clock,CreditCard,ShieldCheck,RefreshCw,X,Plus,CalendarDays,Utensils,Dumbbell,Ticket,Mail,ChevronDown,MousePointer2,LoaderCircle,ExternalLink,Receipt,Globe,Sun,Package,Link2} from 'lucide-react';
+import {Sparkles,ArrowUpRight,ArrowRight,MapPin,Settings2,Play,Pause,Monitor,Check,CheckCircle2,Clock,CreditCard,ShieldCheck,RefreshCw,X,Plus,CalendarDays,Utensils,Dumbbell,Ticket,Mail,ChevronDown,MousePointer2,LoaderCircle,ExternalLink,Receipt,Globe,Sun,Package,Link2,Gem} from 'lucide-react';
 import './concierge.css';
 import DemoLife from './DemoLife';
 import ProfilePage from './ProfilePage';
@@ -8,6 +8,7 @@ import CalendarPage from './CalendarPage';
 import TaskList from './TaskList';
 import SourceMap from './SourceMap';
 import AgendaOverview from './AgendaOverview';
+import {totalDealValue} from './deal-value';
 import {taskSections} from './task-presentation';
 import './workspace.css';
 async function api(path,body){const r=await fetch('/api'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed.');return d;}
@@ -29,6 +30,7 @@ export default function Concierge(){
  const connect=(toolkit)=>act(async()=>{const d=await api('/connect',{toolkit});setAuthUrl(d.redirectUrl);window.open(d.redirectUrl,'_blank','noopener,noreferrer')});
  if(!data)return <div className="loading"><Mascot large/><h2>Getting your life together…</h2></div>;
  const secured=data.results.filter(r=>r.status==='secured'),attention=data.results.filter(r=>r.status==='needs_you'),trials=secured.filter(r=>r.renewalDate||r.renewalAmount),current=data.services.find(s=>s.id===data.mission?.current);
+ const totalValue=totalDealValue(data.bookings);
  const totalSpent=secured.reduce((n,r)=>n+(r.totalToday||0),0);
  const nav=[['life','Overview'],['calendar','Calendar'],['profile','Your profile'],['activity','Agent activity'],['subscriptions','Subscriptions']];
  const viewSwitcher=<nav className="view-switcher" aria-label="Switch view">{nav.map(([id,label])=><button className={tab===id?'active':''} aria-current={tab===id?'page':undefined} key={id} onClick={()=>{setCalendarFocus(null);setTab(id)}}>{React.createElement(({life:Globe,calendar:CalendarDays,profile:Settings2,activity:Monitor,subscriptions:CreditCard})[id],{size:16})}{label}{id==='subscriptions'&&trials.length>0&&<i>{trials.length}</i>}</button>)}</nav>;
@@ -36,7 +38,7 @@ export default function Concierge(){
  return <div className={"concierge-app "+(data.demoMode?"experience-mode":"")}>
 
  <main className="concierge-main">
- <header className="workspace-header"><div className="header-identity"><button className="app-icon-button" aria-label="Home" onClick={()=>setTab('life')}><img src="/assets/scout-icon.png" alt="" width="40" height="40"/></button><div className="header-page-title"><h1>{nav.find(([id])=>id===tab)?.[1]}</h1><span><MapPin size={11}/>{data.profile.address}</span></div></div>{viewSwitcher}<div className="header-controls"><div className="workspace-actions"><button className="button outline" aria-label={showVM&&tab==='life'?'Hide computer':'Computer'} onClick={()=>{setTab('life');setShowVM(tab==='life'?!showVM:true)}}><Monitor size={14}/><span>{showVM&&tab==='life'?'Hide computer':'Computer'}</span></button>{data.active?<button className="button dark" onClick={()=>act(()=>api('/concierge/pause',{}))}><Pause size={14}/>Pause</button>:<button className="button dark" disabled={busy} onClick={()=>{setTab('life');start()}}><Plus size={14}/>{data.onboarded?'Plan my week':'Set up profile'}</button>}</div><button onClick={edit} className="header-user" aria-label="Your profile"><span className="header-avatar">{data.profile.name[0]||'?'}</span><span className="header-user-name">{data.profile.name.split(' ')[0]||'You'}</span><ChevronDown size={12}/></button></div></header>
+ <header className="workspace-header"><div className="header-identity"><button className="app-icon-button" aria-label="Home" onClick={()=>setTab('life')}><img src="/assets/scout-icon.png" alt="" width="40" height="40"/></button><div className="header-page-title"><h1>{nav.find(([id])=>id===tab)?.[1]}</h1><span><MapPin size={11}/>{data.profile.address}</span></div></div>{viewSwitcher}<div className="header-controls"><div className="header-total-value" aria-label={`Total value $${totalValue.toLocaleString('en-US')}`}><Gem size={15}/><div><small>Total value</small><strong>${totalValue.toLocaleString('en-US')}</strong></div></div><div className="workspace-actions"><button className="button outline" aria-label={showVM&&tab==='life'?'Hide computer':'Computer'} onClick={()=>{setTab('life');setShowVM(tab==='life'?!showVM:true)}}><Monitor size={14}/><span>{showVM&&tab==='life'?'Hide computer':'Computer'}</span></button>{data.active?<button className="button dark" onClick={()=>act(()=>api('/concierge/pause',{}))}><Pause size={14}/>Pause</button>:<button className="button dark" disabled={busy} onClick={()=>{setTab('life');start()}}><Plus size={14}/>{data.onboarded?'Plan my week':'Set up profile'}</button>}</div><button onClick={edit} className="header-user" aria-label="Your profile"><span className="header-avatar">{data.profile.name[0]||'?'}</span><span className="header-user-name">{data.profile.name.split(' ')[0]||'You'}</span><ChevronDown size={12}/></button></div></header>
 
  {tab==='calendar'?<CalendarPage initialItem={calendarFocus} plan={data.dayPlan} onRemove={id=>act(()=>api('/concierge/day-plan/remove',{id}))} onConnect={()=>{setPanel('connections');api('/connections').then(d=>setConnections(d.connections)).catch(e=>notify(e.message));connect('googlecalendar')}}/>:tab==='profile'?<ProfilePage data={data} onSave={async profile=>{const next=await api('/concierge/profile',profile);setData(next);return next}} onSync={async()=>{const next=await api('/concierge/profile-memory/sync',{});setData(next);return next}} onReadMemory={()=>api('/concierge/profile-memory')}/>:<>
 

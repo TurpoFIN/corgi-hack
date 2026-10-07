@@ -89,3 +89,5 @@ Completed task-card labels now follow the matching booking job: Registered for r
 
 ## Deal value
 Every new discovery asks GPT-6.1 to assign a positive whole-dollar `valueUsd`. This is distinct from `priceToday` and pricing evidence. The shared `DealValue` component renders a compact gem badge on task outcomes, saved offers, agenda rows and calendar entries/details. Values are persisted with the offer and returned through the existing agent API. Existing records were valued by Agent37 and updated across booking/task/mission copies through the owner-only deal-values endpoint. Preserve one value per offer URL when enriching duplicates.
+
+Recent completions can be collapsed with the section heading; the browser remembers the choice in localStorage without changing task data. The persistent header displays total value of unique ready consumer offers, excluding removed/expired items. `src/deal-value.js` owns the sum, so repeated appearances of a deal in tasks/calendar do not multiply it. The responsive header keeps the existing actions and profile access.
