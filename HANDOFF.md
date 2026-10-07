@@ -35,3 +35,13 @@ Use `npm test` and `npm run build`, then verify the actual local UI. A build doe
 ## Benefit context
 
 Discovery results carry `benefitSummary`, `benefits` (icon, label, source evidence), and `benefitCaveat`. `src/BenefitContext.jsx` renders concise summaries and icons on event rows, pass cards, and offers under review. Eligibility, renewal, and other caveats appear only in detail views. Keep card text minimal; do not add explanatory or cautionary paragraphs back to the main interface. Preserve source-backed inclusions: free entry does not imply free food. `server/benefits.js` validates supported icon names and field lengths. To enrich older records with reviewed context, stop the local app and run `node scripts/enrich-offers.mjs path/to/reviewed-benefits.json`; it backs up the document before updating both research results and booking snapshots.
+
+## Profile ownership
+
+`src/ProfilePage.jsx` is the single profile editor. `server/profile.js` validates interests, preferred times, distance, and existing signup fields and serializes the app-owned `PROFILE.md`. `syncProfileMemory` writes the profile to Agent37, preserves existing `NOTES.md`, and checks exact Markdown readback before recording success. Saving is disabled while a mission or another sync is running. Discovery and provider runs read both files. The notebook viewer reads files from the VM; do not substitute generated local text for that readback. The app has one user-facing flow and no mode switch.
+
+## Other agents
+
+`server/bot-api.js` mounts the bearer-authenticated `/api/v1` router before the local UI origin guard. All operations delegate to `conciergeApi` in `server/concierge.js`; do not create a separate planning engine. `server/api-access.js` stores the dedicated API key in ignored owner-only runtime storage. `src/BotAccess.jsx` provides one-click connection instructions. Preserve idempotency and the single-active-mission guard. Remote cloud bots require an HTTPS gateway restricted to `/api/v1`; none is provisioned by this repository.
+
+Partial profile updates must pass through `mergeProfilePatch`: only explicitly supplied fields may change. Do not spread parsed partial-schema defaults over existing profiles.

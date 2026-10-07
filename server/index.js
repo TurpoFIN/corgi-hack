@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import {registerConcierge} from './concierge.js';
+import {registerBotApi} from './bot-api.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { catalog } from './catalog.js';
@@ -18,6 +19,7 @@ function save(){fs.writeFileSync(stateFile+'.tmp',JSON.stringify(state,null,2),{
 function log(kind,text,extra={}){const event={id:randomUUID(),kind,text,at:new Date().toISOString(),...extra};state.activity.unshift(event);state.activity=state.activity.slice(0,150);save();return event;}
 let activeJob=null;
 const app=express();app.disable('x-powered-by');app.use(express.json({limit:'100kb'}));
+registerBotApi(app);
 app.use('/api',(req,res,next)=>{const allowed=['localhost','127.0.0.1','[::1]'];if(!allowed.includes(req.hostname))return res.status(403).json({error:'Local access only.'});if(req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host)return res.status(403).json({error:'Same-origin requests only.'});}catch{return res.status(403).json({error:'Invalid origin.'});}}res.set('Cache-Control','no-store');next();});
 registerConcierge(app);
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
@@ -62,7 +64,7 @@ app.post('/api/agent/run',wrap(async(req,res)=>{
  }catch(e){job.status='failed';job.error=e.message;log('error',e.message,{jobId:job.id});}finally{activeJob=null;save();}})();
 }));
 app.use('/api',(req,res)=>res.status(404).json({error:'Endpoint not found.'}));
-app.use((err,req,res,next)=>{console.error(err.name,err.message?.slice(0,300));res.status(err instanceof z.ZodError?400:500).json({error:err instanceof z.ZodError?'Please check the form values.':err.message||'Unexpected error.'});});
+app.use((err,req,res,next)=>{console.error(err.name,err.message?.slice(0,300));res.status(err instanceof z.ZodError?400:err.status||500).json({error:err instanceof z.ZodError?'Please check the form values.':err.message||'Unexpected error.'});});
 app.use(['/data','/server','/.insforge','/infra'],(_req,res)=>res.sendStatus(404));
 if(process.env.NODE_ENV==='production'){app.use(express.static('dist'));app.get('/{*splat}',(_req,res)=>res.sendFile(path.resolve('dist/index.html')));}else{const {createServer}=await import('vite');const vite=await createServer({server:{middlewareMode:true,fs:{deny:['.env','.env.*','**/data/**','**/server/**','**/.insforge/**','**/infra/**','**/*.{crt,pem}']}},appType:'spa'});app.use(vite.middlewares);}
 const port=Number(process.env.PORT)||5173;

@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {normalizeProfile,profileMarkdown,profileSchema,mergeProfilePatch} from './profile.js';
+const base={name:'Example Person',email:'person@example.com',address:'123 Example Street',city:'San Francisco',state:'CA',diet:'Vegetarian',goals:['fitness','luma'],maxUpfront:0,allowTrials:false,notes:'No early classes.',daily:false};
+test('legacy service preferences migrate without overwriting explicit interests',()=>{assert.deepEqual(normalizeProfile(base).interests,['fitness','social']);assert.deepEqual(normalizeProfile({...base,interests:[]}).interests,[])});
+test('profile serialization carries preferences and never silently changes trial consent',()=>{const p=profileSchema.parse({...base,interests:['music','food'],timePreference:'evenings',maxDistanceMiles:3});const md=profileMarkdown(p);for(const text of ['music, food','evenings','within 3 miles','Vegetarian','Do not select subscription trials','No early classes.'])assert.ok(md.includes(text));assert.equal(profileSchema.safeParse({...p,interests:['unknown']}).success,false);});
+
+test('partial API edits preserve omitted values instead of applying field defaults',()=>{const original={...base,phone:'555-0100',eventUrl:'https://example.com/event',interests:['fitness'],timePreference:'evenings',maxDistanceMiles:3};const next=mergeProfilePatch(original,{interests:['food']});for(const key of ['phone','eventUrl','timePreference','maxDistanceMiles'])assert.equal(next[key],original[key]);assert.deepEqual(next.interests,['food']);});

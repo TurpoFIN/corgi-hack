@@ -31,7 +31,7 @@ Chromium runs in the desktop image and is accessed over CDP; no additional brows
 
 ## Application flow
 
-1. Save your name, contact details, address, preferences, and spending limit.
+1. Open **Your profile** to save your interests, preferred times and distance, food preferences, contact details, and spending limit.
 2. Select **Take care of my week**. Scout searches the live web through Agent37 and reads actual source pages.
 3. Follow progress in the app or open the live Agent37 computer.
 4. Eligible offers enter a persistent booking queue: queued, preparing, booking, ready. Pause and resume without losing the queue.
@@ -39,6 +39,18 @@ Chromium runs in the desktop image and is accessed over CDP; no additional brows
 6. Export ready events to a calendar file. Entries are personal plans with tentative status.
 
 Offer prices and eligibility come from the source. Paid or unverified offers remain under review. Internal workflow completion and provider-issued confirmations are separate records. The provider workflow supports secure handoff for login, verification, payment details, and consent.
+
+## Profile and notebook
+
+The profile is stored in InsForge. Each save syncs `PROFILE.md` and `profile.json` to `/home/node/free-sf/` on the Agent37 computer and verifies the Markdown by reading it back. The app owns these settings. `NOTES.md` is created once and preserved for the agent’s dated observations. **Open notebook** reads the actual VM files.
+
+Discovery and provider workflows sync and read the notebook before starting. A failed sync remains visible with a retry action; it is never presented as successful. Changes to interests and preferences preserve existing plans.
+
+## Connect another agent
+
+Open **Your profile → Connect your agent → Copy agent setup**. One click creates the local API key and copies the base URL, authentication, and usage instructions. No signup or OAuth is needed for this API. It serves the same profile, notebook, missions, and plans as the app.
+
+The versioned interface is `/api/v1`; its machine-readable contract is `/api/v1/openapi.json`. See [API documentation](docs/API.md) for endpoints, idempotent requests, and connecting a cloud agent through an HTTPS gateway.
 
 ## Infrastructure
 

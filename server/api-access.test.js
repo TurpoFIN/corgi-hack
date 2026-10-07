@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {authorized} from './api-access.js';
+test('bot API requires the exact bearer credential',()=>{const key='fsf_test_credential';assert.equal(authorized('Bearer '+key,key),true);for(const header of [undefined,'','Basic '+key,'Bearer wrong','Bearer '+key+'x'])assert.equal(authorized(header,key),false);assert.equal(authorized('Bearer '+key,null),false);});
