@@ -10,6 +10,7 @@ import {createBooking,transitionBooking,bookingsCalendar} from './bookings.js';
 import {buildDayPlan} from './day-plan.js';
 import {prepareMonid} from './monid.js';
 import {sources,CATEGORIES,SOURCE_MAP_VERSION,researchPlan,researchInstruction,sourceCoverage,needsExpansion} from './source-map.js';
+import {applyDealValues} from './deal-values.js';
 import {consumerOpportunity} from '../src/opportunity-policy.js';
 import {syncCatalog,catalogObservations,saveObservations,catalogStorage} from './catalog-store.js';
 import {reusableResearch} from './research-recovery.js';
@@ -118,7 +119,7 @@ function queueBookings(){
  for(const offer of state.demo?.opportunities||[]){
   if(!offer.simulated||(!state.profile.allowTrials&&offer.kind==='trial'))continue;
   const existing=state.bookings.find(j=>j.offer.url===offer.url);
-  if(existing){if(offer.plannedVisit&&existing.status==='ready')existing.offer={...existing.offer,...offer};continue;}
+  if(existing){if(offer.valueUsd!==undefined)existing.offer.valueUsd=offer.valueUsd;if(offer.plannedVisit&&existing.status==='ready')existing.offer={...existing.offer,...offer};continue;}
   state.bookings.push(createBooking(offer,state.profile));
  }
 }
@@ -327,6 +328,7 @@ export const conciergeApi={
 };
 export function registerConcierge(app){setTimeout(drainTaskQueue,1000);setTimeout(()=>scheduleTick().catch(e=>log('attention',e.message,'schedule')),1500);setInterval(()=>scheduleTick().catch(e=>log('attention',e.message,'schedule')),30000).unref();const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
  app.get('/api/concierge/tasks',(_req,res)=>res.json({tasks:state.tasks}));
+ app.post('/api/concierge/deal-values',wrap(async(req,res)=>{const result=applyDealValues(state,req.body);await save();if(storageStatus.error)throw apiError(503,'Could not save deal values.');res.json(result)}));
  app.post('/api/concierge/tasks/:id/schedule',wrap(async(req,res)=>res.json(await setTaskSchedule(req.params.id,req.body))));
  app.post('/api/concierge/tasks/dismiss',wrap(async(req,res)=>res.json(await dismissTasks(req.body))));
  app.post('/api/concierge/tasks',wrap(async(req,res)=>res.status(202).json(await addTask(req.body))));

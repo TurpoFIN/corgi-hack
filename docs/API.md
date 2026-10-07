@@ -88,3 +88,5 @@ The local server checks due schedules every 30 seconds while running. Schedules 
 `GET /sources` returns the shared catalog, category labels and storage status. Each entry is a research route, not an assertion that an offer is available. Optional `category=fitness` filters by category ID; `q=Partiful` searches the source name, domain and research target. `total` is the full catalog size; `matched` is the filtered count. Unknown category IDs return 400. Use the returned categories rather than inventing IDs.
 
 Task `coverage` exposes observed searched/opened providers, source URLs, free-match counts and `limited`. Use these fields to describe search scope accurately. A completed task with no matching offer should lead to a scoped explanation or a follow-up task with broader permitted constraints, not a blanket claim that San Francisco has no deals.
+
+Offers include `valueUsd`, a positive whole-dollar value used by the deal-value badge. It travels with task opportunities, plans and calendar items. `priceToday` remains the separate upfront amount.

@@ -86,3 +86,6 @@ Supabase stores only the source catalog and public offer observations in the pri
 An Agent37 instance-quota error can resume the failed task using its previous session and source trace after allowance is restored. Failure missions remain in history. Three dollars of one-time instance headroom were added after the original allowance was exhausted; no wallet purchase or recurring cap was set.
 
 Completed task-card labels now follow the matching booking job: Registered for ready events, Pass ready for ready trials, and specific approval/waitlist states where indicated. Discovery alone remains Found; queued or removed jobs keep their own status. These UI arrangement states do not populate the separate provider_confirmation API field.
+
+## Deal value
+Every new discovery asks GPT-6.1 to assign a positive whole-dollar `valueUsd`. This is distinct from `priceToday` and pricing evidence. The shared `DealValue` component renders a compact gem badge on task outcomes, saved offers, agenda rows and calendar entries/details. Values are persisted with the offer and returned through the existing agent API. Existing records were valued by Agent37 and updated across booking/task/mission copies through the owner-only deal-values endpoint. Preserve one value per offer URL when enriching duplicates.
