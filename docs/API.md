@@ -6,7 +6,7 @@ Instinct, Muse, Grok, and other HTTP agents can operate the same task queue, pro
 
 Local base URL: `http://localhost:5173/api/v1`. Send `Authorization: Bearer YOUR_KEY` on every data/action request. `/openapi.json` is public and describes the complete interface.
 
-A remote agent needs an HTTPS gateway forwarding `/api/v1` to this server. Localhost is reachable only on this computer. Publish only the agent API path; the owner UI and other `/api` routes stay private. Gateway provisioning is not included.
+Run `npm run expose:api` alongside the app to create a public HTTPS endpoint through the installed `cloudflared` CLI. The gateway forwards only `/api/v1/*`; the owner UI, private files and other API routes return 404. Copy agent setup automatically picks up the public address. Keep both processes and this computer online. The temporary address changes when the tunnel restarts; copy the setup again afterward. A permanent cloud deployment is separate from this quick-access path.
 
 The key grants access to this user's tasks, profile, notes, and plans. Keep it in the agent's secret storage. It is stored locally in ignored `data/` with owner-only permissions, separately from provider credentials.
 

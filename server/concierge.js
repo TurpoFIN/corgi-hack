@@ -148,7 +148,7 @@ async function resumeBookings(){
 async function executeDemo(instruction='',task=null,replay=null){
  if(state.demo?.id){state.missionArchive=[structuredClone(state.demo),...(state.missionArchive||[])].slice(0,30);}
  active=true;stopRequested=false;
- state.demo={id:randomUUID(),status:'running',startedAt:new Date().toISOString(),opportunities:[],tools:[],model:AGENT_MODEL,instruction};
+ state.demo={id:randomUUID(),status:'running',startedAt:new Date().toISOString(),opportunities:[],tools:task?.resumeSession?structuredClone(task.activity||[]):[],model:AGENT_MODEL,instruction,...(task?.resumeSession?{resumedFrom:task.resumeSession.missionId}:{})};
  state.mission={id:state.demo.id,status:'running',current:'discovery',responseId:null};
  if(task){task.status='running';task.missionId=state.demo.id;task.startedAt=new Date().toISOString();}
  log('working','Scout is finding options for your plan.','discovery');await save();
@@ -163,10 +163,11 @@ async function executeDemo(instruction='',task=null,replay=null){
  await writeRemote('SOURCE_MAP.json',{version:SOURCE_MAP_VERSION,categories:CATEGORIES,sources});
  await writeRemote('SEARCH_PLAN.json',plan);
  monid=await prepareMonid({mission:state.demo.id,writeRemote});state.monid={configured:monid.configured,runs:[]};
- answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+researchInstruction(plan)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
+ answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+researchInstruction(plan)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:'')+(task?.resumeSession?'\nContinue the interrupted research in this session. Reuse sources already read; finish the result rather than repeating discovery.':''),(type,d)=>{
   if(type==='started'){Object.assign(state.mission,d);Object.assign(state.demo,d);save();}
   if(type==='tool'){state.demo.tools.push({tool:d.tool,label:d.label,at:new Date().toISOString()});log('browser',({read_file:'Read Scout’s profile and notes.',write_file:'Updated Scout’s notes.',execute_code:'Checked source details.',browser_console:'Inspected the current page.'})[d.tool]||d.label||d.tool,'discovery');}
- });
+ },task?.resumeSession?{sessionId:task.resumeSession.id}:{});
+ delete task?.resumeSession;
  }
  state.mission.responseId=null;
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}-raw.json`,JSON.stringify(answer,null,2),{mode:0o600});
@@ -243,6 +244,10 @@ async function retryTask(id){
  const task=findTask(id);if(!['failed','paused','cancelled'].includes(task.status))throw apiError(409,'Task is already in progress or completed.');
  const invalidResult=task.errorCode==='invalid_agent_result'||(/^\s*\[/.test(task.error||'')&&/"path"/.test(task.error));
  task.recoverSavedResearch=task.status==='failed'&&invalidResult&&!!readSavedResearch(task);
+ if(task.status==='failed'&&/budget exhausted|instance_budget_exhausted|HTTP 402/i.test(task.error||'')){
+  const prior=state.demo?.id===task.missionId?state.demo:(state.missionArchive||[]).find(m=>m.id===task.missionId);
+  if(prior?.sessionId)task.resumeSession={id:prior.sessionId,missionId:task.missionId};
+ }
  task.status='queued';task.error=null;task.finishedAt=null;await save();setTimeout(drainTaskQueue,0);return task;
 }
 async function cancelTask(id){

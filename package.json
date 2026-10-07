@@ -7,7 +7,8 @@
     "dev": "node --env-file-if-exists=.env.local server/index.js",
     "build": "vite build",
     "start": "NODE_ENV=production node --env-file-if-exists=.env.local server/index.js",
-    "test": "node --test server/*.test.js"
+    "test": "node --test server/*.test.js",
+    "expose:api": "node scripts/publish-api.mjs"
   },
   "dependencies": {
     "@insforge/sdk": "^1.5.2",

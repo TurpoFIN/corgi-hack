@@ -42,7 +42,7 @@ Discovery results carry `benefitSummary`, `benefits` (icon, label, source eviden
 
 ## Other agents
 
-`server/bot-api.js` mounts the bearer-authenticated `/api/v1` router before the local UI origin guard. All operations delegate to `conciergeApi` in `server/concierge.js`; do not create a separate planning engine. `server/api-access.js` stores the dedicated API key in ignored owner-only runtime storage. `src/BotAccess.jsx` provides one-click connection instructions. Preserve idempotency and the single-active-mission guard. Remote cloud bots require an HTTPS gateway restricted to `/api/v1`; none is provisioned by this repository.
+`server/bot-api.js` mounts the bearer-authenticated `/api/v1` router before the local UI origin guard. All operations delegate to `conciergeApi` in `server/concierge.js`; do not create a separate planning engine. `server/api-access.js` stores the dedicated API key in ignored owner-only runtime storage. `src/BotAccess.jsx` provides one-click connection instructions. Preserve idempotency and the single-active-mission guard. Remote cloud bots can use `npm run expose:api`, which starts an API-only loopback proxy and Cloudflare HTTPS tunnel. The URL is emitted and briefly cached in ignored public/agent-endpoint.json for the one-paste UI. It changes on restart and requires the computer and app to remain online.
 
 Partial profile updates must pass through `mergeProfilePatch`: only explicitly supplied fields may change. Do not spread parsed partial-schema defaults over existing profiles.
 
@@ -79,3 +79,8 @@ The product targets hosted food/drinks at Luma and Partiful events, consumer rew
 `server/source-map.js` contains 134 research routes in 10 categories, independent-provider routing, per-site verification targets and evidence-derived coverage. Each live Agent37 mission receives SOURCE_MAP.json and SEARCH_PLAN.json. A no-match first pass with insufficient provider breadth gets one bounded continuation; raw first-pass evidence is retained. Counts distinguish targeted searches from page requests and do not equate catalog membership with a verified offer. The collapsed source-map panel is searchable by category. Source health can be rechecked with `node scripts/check-sources.mjs`; an HTTP response is not proof of a free offer.
 
 Supabase stores only the source catalog and public offer observations in the private `scout_catalog` schema. The server retrieves prior observations for later searches; InsForge continues to own the personal profile, tasks and plans. Configure SUPABASE_PROJECT_REF or local data/supabase-config.json. The server reads the PAT from hsec `supabase-corgi-hack`. Monid reads hsec `monid` (or MONID_API_KEY); its fixed-call price parser follows the live nested amount.value/currency schema. Neither key goes to the browser or repository.
+
+## Public agent access and interrupted research
+`server/api-gateway.js` only forwards `/api/v1/*` and preserves bearer/idempotency headers. Public tests verified guide/schema access, authenticated status/source reads, task creation and cancellation; owner routes and private files return404. The tunnel process is independent of the app. No permanent hosting or migration was performed.
+
+An Agent37 instance-quota error can resume the failed task using its previous session and source trace after allowance is restored. Failure missions remain in history. Three dollars of one-time instance headroom were added after the original allowance was exhausted; no wallet purchase or recurring cap was set.
