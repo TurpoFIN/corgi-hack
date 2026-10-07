@@ -84,3 +84,5 @@ Supabase stores only the source catalog and public offer observations in the pri
 `server/api-gateway.js` only forwards `/api/v1/*` and preserves bearer/idempotency headers. Public tests verified guide/schema access, authenticated status/source reads, task creation and cancellation; owner routes and private files return404. The tunnel process is independent of the app. No permanent hosting or migration was performed.
 
 An Agent37 instance-quota error can resume the failed task using its previous session and source trace after allowance is restored. Failure missions remain in history. Three dollars of one-time instance headroom were added after the original allowance was exhausted; no wallet purchase or recurring cap was set.
+
+Completed task-card labels now follow the matching booking job: Registered for ready events, Pass ready for ready trials, and specific approval/waitlist states where indicated. Discovery alone remains Found; queued or removed jobs keep their own status. These UI arrangement states do not populate the separate provider_confirmation API field.
