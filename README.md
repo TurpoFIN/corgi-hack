@@ -2,7 +2,7 @@
 
 Your autonomous San Francisco life assistant. Enter your address and preferences, then let Scout find free events, fitness passes, and everyday offers, organize your week, and keep the details in one place.
 
-Built for the Agent37 hackathon with **Agent37**, **OpenAI GPT-6.1 Sol**, and **InsForge**.
+Built for the Agent37 hackathon with **Agent37**, **OpenAI GPT-6.1 Sol**, **InsForge**, **Monid**, and **Supabase**.
 
 ## Run locally
 
@@ -57,8 +57,16 @@ The versioned interface is `/api/v1`; its machine-readable contract is `/api/v1/
 - **Agent37:** persistent cloud computer, browser tools, live research, signed desktop access, and optional scheduled provider workflows.
 - **OpenAI:** exact `openai/gpt-6.1-sol` model, with no silent fallback.
 - **InsForge:** profiles, activity, research, booking jobs, and provider outcomes stored in the `free_sf_documents` table, with RLS enabled.
+- **Monid:** Scout discovers and calls paid search and webpage-extraction tools from its Agent37 computer during live research. One connection provides access to multiple tool providers.
+- **Supabase:** shared source memory in the private `scout_catalog` schema. Stores the 134-source directory and public offer observations so future missions can reuse research; personal profiles and task history stay in InsForge.
 - **React + Vite:** interactive application and live state updates.
 - **Express:** server-only credentials, provider calls, queue management, and calendar export.
+
+### Monid and Supabase setup
+
+For Monid, set `MONID_API_KEY` in `.env.local`, or keep the key in `hsec` under `monid` (`MONID_HSEC_NAME` overrides the entry name).
+
+For Supabase, set `SUPABASE_PROJECT_REF` and provide a management access token through `SUPABASE_ACCESS_TOKEN` or the `hsec` entry `supabase-corgi-hack` (`SUPABASE_HSEC_NAME` overrides it). The server provisions and updates the private catalog through the Supabase management API. Credentials stay server-side and out of Git.
 
 ## Development
 
