@@ -9,7 +9,7 @@ function Task({task,onAnswer,onRetry}){
  {task.status==='needs_input'&&task.question&&<form className="task-question" onSubmit={submit}><p>{task.question.prompt}</p>{task.question.choices?.length>0&&<div className="task-choices">{task.question.choices.map(choice=><button type="button" key={choice} aria-pressed={answer===choice} onClick={()=>setAnswer(choice)}>{choice}</button>)}</div>}<div className="task-answer"><input aria-label="Your answer" placeholder="Or write your answer…" value={answer} onChange={e=>setAnswer(e.target.value)} disabled={busy}/><button aria-label="Send answer" disabled={busy||!answer.trim()}><ArrowUp size={16}/></button></div>{error&&<small role="alert">{error}</small>}</form>}
  {expanded&&<p className="task-result">{task.result||task.text}</p>}
  {task.error&&<p className="task-error">{task.error}</p>}
- 
+
  </li>
 }
 export default function TaskList({tasks=[],paused,onAdd,onAnswer,onRetry,onPause}){
