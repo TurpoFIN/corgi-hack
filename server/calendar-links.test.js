@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {googleCalendarLink,sfDay} from '../src/calendar-links.js';
+test('Google Calendar handoff encodes event details and correct Pacific time',()=>{const url=new URL(googleCalendarLink({title:'Food & music',venue:'SF',startsAt:'2026-10-09T17:00:00-07:00',endsAt:'2026-10-09T21:00:00-07:00',url:'https://example.com/event'}));assert.equal(url.searchParams.get('text'),'Food & music');assert.equal(url.searchParams.get('dates'),'20261010T000000Z/20261010T040000Z');assert.equal(sfDay('2026-10-10T00:00:00Z'),'2026-10-09');});
+test('unknown end time uses an explicitly described editable planning block',()=>{const url=new URL(googleCalendarLink({title:'Parade',startsAt:'2026-10-11T12:30:00-07:00',venue:'SF'}));assert.match(url.searchParams.get('details'),/One-hour planning block/);assert.equal(googleCalendarLink({title:'Undated trial'}),null);});

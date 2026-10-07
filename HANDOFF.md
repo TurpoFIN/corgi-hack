@@ -45,3 +45,7 @@ Discovery results carry `benefitSummary`, `benefits` (icon, label, source eviden
 `server/bot-api.js` mounts the bearer-authenticated `/api/v1` router before the local UI origin guard. All operations delegate to `conciergeApi` in `server/concierge.js`; do not create a separate planning engine. `server/api-access.js` stores the dedicated API key in ignored owner-only runtime storage. `src/BotAccess.jsx` provides one-click connection instructions. Preserve idempotency and the single-active-mission guard. Remote cloud bots require an HTTPS gateway restricted to `/api/v1`; none is provisioned by this repository.
 
 Partial profile updates must pass through `mergeProfilePatch`: only explicitly supplied fields may change. Do not spread parsed partial-schema defaults over existing profiles.
+
+## Calendar view
+
+`src/CalendarPage.jsx` shows ready, dated booking records in a Pacific-time week view. `src/calendar-links.js` creates Google event-template links; the user saves those in Google. Unknown end times use a clearly described, editable one-hour planning block. This is not automatic Google synchronization. Existing account connection controls initiate Google OAuth. Do not present a local plan or an opened event form as a saved Google event.

@@ -36,7 +36,7 @@ Chromium runs in the desktop image and is accessed over CDP; no additional brows
 3. Follow progress in the app or open the live Agent37 computer.
 4. Eligible offers enter a persistent booking queue: queued, preparing, booking, ready. Pause and resume without losing the queue.
 5. Open event and pass cards for concrete benefit summaries, illustrated inclusions, important conditions, source links, and job history. Remove a plan or restore it later.
-6. Export ready events to a calendar file. Entries are personal plans with tentative status.
+6. Open **Calendar** to view ready events by week. **Add to Google Calendar** opens a prefilled event for the user to save; **Export plans** downloads the calendar file. Entries are personal plans with tentative status. A Google Calendar connection requires the account owner’s authorization; a shared viewing link alone does not grant write access.
 
 Offer prices and eligibility come from the source. Paid or unverified offers remain under review. Internal workflow completion and provider-issued confirmations are separate records. The provider workflow supports secure handoff for login, verification, payment details, and consent.
 
