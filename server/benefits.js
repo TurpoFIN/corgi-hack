@@ -7,6 +7,7 @@ export const benefitSchema=z.object({
 export const benefitFields={
  benefitSummary:z.string().trim().max(260).default(''),
  benefits:z.array(benefitSchema).max(4).default([]),
- benefitCaveat:z.string().trim().max(240).default('')
+ // Detail text is not a compact-card field. Preserve all material conditions.
+ benefitCaveat:z.string().trim().default('')
 };
 export const benefitContextSchema=z.object(benefitFields);

@@ -62,3 +62,7 @@ Partial profile updates must pass through `mergeProfilePatch`: only explicitly s
 ## Application layout
 
 `src/workspace.css` provides the app shell with a sticky page header inside the content area containing the brand, page title, horizontal view selector, action buttons and profile. There is no separate full-width top navbar. The overview starts with the compact task inbox and `AgendaOverview` upcoming itinerary, plus agent status and controls. Saved offers are expandable below the agenda. Clicking a scheduled stop opens that stop in Calendar. Keep operational content first; do not bring back the slogan hero, decorative offer cards, or promotional footer.
+
+## Research text and recovery
+
+`benefitCaveat` is detail text, so its complete content is accepted without a card-length limit. Keep type, price and date validation intact. A failed task with retained search evidence can replay its saved response through the current parser on Retry, without another model/search run. Recovery records `recoveredFrom`; the original raw response remains in private runtime storage. Schema failures show a concise task error and save diagnostic issues privately under `data/discovery`.

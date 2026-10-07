@@ -9,6 +9,7 @@ import {demoResults,discoveryPrompt} from './demo.js';
 import {createBooking,transitionBooking,bookingsCalendar} from './bookings.js';
 import {buildDayPlan} from './day-plan.js';
 import {prepareMonid} from './monid.js';
+import {reusableResearch} from './research-recovery.js';
 import {newTask,answerTask,taskInstruction,questionSchema} from './tasks.js';
 import {profileSchema,normalizeProfile,profileMarkdown,initialNotes,memoryInstruction,mergeProfilePatch} from './profile.js';
 import {currentApiKey,ensureApiKey} from './api-access.js';
@@ -140,7 +141,7 @@ async function resumeBookings(){
  catch(e){state.mission.status='failed';log('attention',e.message,'booking');}
  finally{active=false;await save();}
 }
-async function executeDemo(instruction='',task=null){
+async function executeDemo(instruction='',task=null,replay=null){
  if(state.demo?.id){state.missionArchive=[structuredClone(state.demo),...(state.missionArchive||[])].slice(0,30);}
  active=true;stopRequested=false;
  state.demo={id:randomUUID(),status:'running',startedAt:new Date().toISOString(),opportunities:[],tools:[],model:AGENT_MODEL,instruction};
@@ -148,12 +149,18 @@ async function executeDemo(instruction='',task=null){
  if(task){task.status='running';task.missionId=state.demo.id;task.startedAt=new Date().toISOString();}
  log('working','Scout is finding options for your plan.','discovery');await save();
  try{
+ let answer,monid={configured:false};
+ if(replay){
+  answer=replay.answer;state.demo.tools=structuredClone(replay.tools);state.demo.recoveredFrom=replay.sourceMissionId;
+  log('working','Recovering the saved research result.','discovery');
+ }else{
  await syncProfileMemory();
- const monid=await prepareMonid({mission:state.demo.id,writeRemote});state.monid={configured:monid.configured,runs:[]};
- const answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
+ monid=await prepareMonid({mission:state.demo.id,writeRemote});state.monid={configured:monid.configured,runs:[]};
+ answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
   if(type==='started'){Object.assign(state.mission,d);Object.assign(state.demo,d);save();}
   if(type==='tool'){state.demo.tools.push({tool:d.tool,label:d.label,at:new Date().toISOString()});log('browser',({read_file:'Read Scout’s profile and notes.',write_file:'Updated Scout’s notes.',execute_code:'Checked source details.',browser_console:'Inspected the current page.'})[d.tool]||d.label||d.tool,'discovery');}
  });
+ }
  state.mission.responseId=null;
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}-raw.json`,JSON.stringify(answer,null,2),{mode:0o600});
  if(stopRequested){state.demo.status='paused';return;}
@@ -163,17 +170,24 @@ async function executeDemo(instruction='',task=null){
  const researched=demoResults(parsedOutput,{searched:state.demo.tools.some(t=>/search/i.test(t.tool))||state.monid?.runs.some(r=>r.status==='COMPLETED'&&r.httpStatus>=200&&r.httpStatus<400)});
  Object.assign(state.demo,researched,{status:'booking',finishedAt:new Date().toISOString(),sessionId:answer.sessionId});
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}.json`,JSON.stringify({answer,...state.demo},null,2),{mode:0o600});
- try{await focusDiscovery();}catch(e){log('attention',e.message,'discovery');}
+ if(!replay){try{await focusDiscovery();}catch(e){log('attention',e.message,'discovery');}}
  queueBookings();await processBookings();state.demo.status=stopRequested?'paused':'completed';
  log('done',`Your week is ready: ${state.bookings.filter(j=>j.status==='ready').length} plans and perks arranged.`,'discovery');
- }catch(e){state.demo.status=stopRequested?'paused':'failed';state.demo.error=e.message;if(state.mission.responseId){try{await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});}catch{}}log('attention',e.message,'discovery');}
- finally{active=false;state.mission.status=state.demo.status;state.mission.responseId=null;if(task&&task.status==='running'){task.status=state.demo.status==='completed'?'completed':state.demo.status==='paused'?'paused':'failed';task.error=state.demo.error||null;task.result=state.demo.summary||null;task.finishedAt=new Date().toISOString();}if(task){task.opportunities=structuredClone(state.demo.opportunities||[]);task.activity=structuredClone(state.demo.tools||[]);}await save();setTimeout(drainTaskQueue,0);}
+ }catch(e){
+  state.demo.status=stopRequested?'paused':'failed';
+  state.demo.errorCode=e instanceof z.ZodError?'invalid_agent_result':null;
+  state.demo.error=e instanceof z.ZodError?'Scout could not read the result. Retry to recover the saved research.':e.message;
+  if(e instanceof z.ZodError){fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}-error.json`,JSON.stringify(e.issues,null,2),{mode:0o600});}
+  if(state.mission.responseId){try{await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});}catch{}}
+  log('attention',state.demo.error,'discovery');
+ }
+ finally{active=false;state.mission.status=state.demo.status;state.mission.responseId=null;if(task&&task.status==='running'){task.status=state.demo.status==='completed'?'completed':state.demo.status==='paused'?'paused':'failed';task.error=state.demo.error||null;task.errorCode=state.demo.errorCode||null;task.result=state.demo.summary||null;task.finishedAt=new Date().toISOString();}if(task){task.opportunities=structuredClone(state.demo.opportunities||[]);task.activity=structuredClone(state.demo.tools||[]);}await save();setTimeout(drainTaskQueue,0);}
 }
 let queueDraining=false;
 async function drainTaskQueue(){
  if(queueDraining||active||memorySyncPromise||state.taskQueuePaused)return;
  queueDraining=true;
- try{let task;while(!active&&!state.taskQueuePaused&&(task=state.tasks.find(t=>t.status==='queued')))await executeDemo(taskInstruction(task),task);}
+ try{let task;while(!active&&!state.taskQueuePaused&&(task=state.tasks.find(t=>t.status==='queued'))){const replay=task.recoverSavedResearch?readSavedResearch(task):null;delete task.recoverSavedResearch;await executeDemo(taskInstruction(task),task,replay);}}
  finally{queueDraining=false;}
 }
 function findTask(id){const task=state.tasks.find(t=>t.id===id);if(!task)throw apiError(404,'Task not found.');return task;}
@@ -184,7 +198,16 @@ async function addTask(input,{idempotencyKey}={}){
  state.tasks.push(task);await save();if(storageStatus.error)throw apiError(503,'Could not save the task.');setTimeout(drainTaskQueue,0);return task;
 }
 async function submitAnswer(id,input){const task=findTask(id);answerTask(task,input);await save();setTimeout(drainTaskQueue,0);return task;}
-async function retryTask(id){const task=findTask(id);if(!['failed','paused','cancelled'].includes(task.status))throw apiError(409,'Task is already in progress or completed.');task.status='queued';task.error=null;task.finishedAt=null;await save();setTimeout(drainTaskQueue,0);return task;}
+function readSavedResearch(task){
+ if(!/^[a-z0-9-]+$/i.test(task.missionId||''))return null;
+ try{return reusableResearch(JSON.parse(fs.readFileSync(`data/discovery/${task.missionId}-raw.json`,'utf8')),task.activity,task.missionId);}catch{return null;}
+}
+async function retryTask(id){
+ const task=findTask(id);if(!['failed','paused','cancelled'].includes(task.status))throw apiError(409,'Task is already in progress or completed.');
+ const invalidResult=task.errorCode==='invalid_agent_result'||(/^\s*\[/.test(task.error||'')&&/"path"/.test(task.error));
+ task.recoverSavedResearch=task.status==='failed'&&invalidResult&&!!readSavedResearch(task);
+ task.status='queued';task.error=null;task.finishedAt=null;await save();setTimeout(drainTaskQueue,0);return task;
+}
 async function cancelTask(id){
  const task=findTask(id);
  if(['completed','failed','cancelled'].includes(task.status))return task;
