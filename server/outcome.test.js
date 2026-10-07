@@ -1,0 +1,5 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {outcomeSchema} from './outcome.js';
+test('accepts null receipt fields from the actual ClassPass login handoff contract',()=>{const p=outcomeSchema.parse({status:'needs_you',title:'ClassPass trial blocked by existing account',summary:'The provider requires login to continue.',url:'https://classpass.com/member-signup/getclasspass',nextAction:'Log in to continue.',actionType:'login',totalToday:0,renewalAmount:null,renewalDate:null,cancelBy:null,confirmation:null,receiptText:null,fieldsFilled:['email'],screenshotPath:'/home/node/.hermes/cache/screenshots/example.png'});assert.equal(p.status,'needs_you');assert.equal(p.confirmation,null);assert.deepEqual(p.fieldsFilled,['email']);});
+test('rejects unsafe URLs and missing provider outcomes',()=>{assert.equal(outcomeSchema.safeParse({status:'secured',title:'Booked',summary:'Claim',url:'javascript:alert(1)'}).success,false);assert.equal(outcomeSchema.safeParse({status:'success'}).success,false);});

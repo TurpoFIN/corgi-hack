@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createBooking,transitionBooking,bookingsCalendar} from './bookings.js';
+const offer={title:'Free event',url:'https://example.com/event',venue:'San Francisco',freeVerified:true,priceToday:0,startsAt:'2027-01-01T12:00:00-08:00',terms:'Free admission'};
+test('booking boundary rejects paid, unknown and past events',()=>{for(const o of [{...offer,priceToday:5},{...offer,priceToday:null},{...offer,freeVerified:false},{...offer,startsAt:'2020-01-01T00:00:00Z'}])assert.throws(()=>createBooking(o,{}));});
+test('cancelled jobs cannot be completed by an outstanding worker',()=>{const j=createBooking(offer,{});transitionBooking(j,'preparing');transitionBooking(j,'cancelled');assert.throws(()=>transitionBooking(j,'ready'));assert.equal(j.status,'cancelled');});
+test('calendar export only includes completed personal plans and omits unknown end times',()=>{const j=createBooking(offer,{});transitionBooking(j,'preparing');transitionBooking(j,'booking');transitionBooking(j,'ready');const calendar=bookingsCalendar([j]);assert.match(calendar,/BEGIN:VEVENT/);assert.match(calendar,/STATUS:TENTATIVE/);assert.doesNotMatch(calendar,/DTEND/);transitionBooking(j,'cancelled');assert.doesNotMatch(bookingsCalendar([j]),/BEGIN:VEVENT/);});

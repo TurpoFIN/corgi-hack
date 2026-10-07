@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {planDay,sfInstant,makeIcs,offerSchema,parseJson} from './domain.js';
+const base={id:'a',price:0,flexible:true,duration:60,eligibility:'Everyone',category:'Outdoors',lat:37.789,lng:-122.405,venue:'Park, Garden',terms:'Public access',source:'https://example.com'};
+const opts={date:'2026-10-07',now:0,startHour:10,endHour:20};
+test('SF date conversion observes daylight saving and winter offset',()=>{assert.equal(sfInstant('2026-10-07','10:00').toISOString(),'2026-10-07T17:00:00.000Z');assert.equal(sfInstant('2026-12-07','10:00').toISOString(),'2026-12-07T18:00:00.000Z');});
+test('excludes restricted eligibility, paid trials, and unknown schedules',()=>{const bad=[{...base,id:'restricted',eligibility:'Residents'},{...base,id:'trial',trial:true},{...base,id:'paid',price:2},{...base,id:'no-time',flexible:false}];assert.deepEqual(planDay(bad,opts),[]);});
+test('does not schedule before now or outside opening hours',()=>{const p=planDay([{...base,openHour:14,closeHour:18}],{...opts,now:sfInstant(opts.date,'13:10').getTime()});assert.equal(p[0].startsAt,sfInstant(opts.date,'14:00').toISOString());assert.deepEqual(planDay([{...base,openHour:6,closeHour:11}],{...opts,now:sfInstant(opts.date,'12:00').getTime()}),[]);});
+test('rejects long walks and infeasible fixed-time events',()=>{assert.deepEqual(planDay([{...base,lat:37.8,lng:-122.46}],opts),[]);assert.deepEqual(planDay([{...base,startsAt:'2026-10-07T09:30:00-07:00'}],opts),[]);});
+test('builds unique, nonoverlapping stops',()=>{const p=planDay([base,{...base,id:'b',lat:37.79}],opts);assert.equal(p.length,2);assert.ok(new Date(p[1].startsAt)>new Date(p[0].endsAt));});
+test('calendar entries remain tentative and escape text',()=>{const plan=planDay([base],opts);const s=makeIcs(plan,[base]);assert.match(s,/STATUS:TENTATIVE/);assert.match(s,/Park\\, Garden/);assert.match(s,/not a confirmed reservation/);});
+test('structured response parser tolerates fences but rejects missing data',()=>{assert.deepEqual(parseJson('```json\n{"offers":[]}\n```'),{offers:[]});assert.equal(offerSchema.safeParse({title:'bad',price:0}).success,false);});

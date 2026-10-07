@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {demoResults} from './demo.js';
+const event={title:'Real source event',category:'Events & food',url:'https://example.com/event',venue:'SF',schedule:'tomorrow',startsAt:'2027-01-01T12:00:00Z',endsAt:null,priceToday:0,priceEvidence:'Free admission',sourceEvidence:'An event with free admission',terms:'Registration required',renewal:null,eligibility:'Public',kind:'event',freeVerified:true};
+test('never creates results without a live search',()=>assert.throws(()=>demoResults({summary:'x',opportunities:[event]},{searched:false})));
+test('only known zero-cost current offers receive explicitly simulated confirmations',()=>{const result=demoResults({summary:'x',opportunities:[event,{...event,url:'https://example.com/unknown',priceToday:null},{...event,url:'https://example.com/paid',priceToday:12},{...event,url:'https://example.com/expired',startsAt:'2020-01-01T12:00:00Z'}]},{searched:true});assert.deepEqual(result.opportunities.map(o=>o.status),['demo_confirmed','needs_review','needs_review','expired']);assert.match(result.opportunities[0].confirmation,/^DEMO-/);assert.equal(result.opportunities[1].confirmation,null);});
