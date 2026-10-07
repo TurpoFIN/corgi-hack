@@ -7,6 +7,9 @@ import {parseJson} from './domain.js';
 import {outcomeSchema} from './outcome.js';
 import {demoResults,discoveryPrompt} from './demo.js';
 import {createBooking,transitionBooking,bookingsCalendar} from './bookings.js';
+import {buildDayPlan} from './day-plan.js';
+import {prepareMonid} from './monid.js';
+import {newTask,answerTask,taskInstruction,questionSchema} from './tasks.js';
 import {profileSchema,normalizeProfile,profileMarkdown,initialNotes,memoryInstruction,mergeProfilePatch} from './profile.js';
 import {currentApiKey,ensureApiKey} from './api-access.js';
 export const services=[
@@ -22,12 +25,15 @@ let active=false,stopRequested=false,persist=Promise.resolve(),memorySyncPromise
 state.profile=normalizeProfile(state.profile);
 state.demoMode = true;
 state.bookings ??= [];
+state.tasks ??= [];
+for(const task of state.tasks)if(task.status==='running'){task.status='paused';task.error='Interrupted when the app restarted.';}
 for(const job of state.bookings)if(['preparing','booking'].includes(job.status))transitionBooking(job,'paused');
 if(state.demo?.status==='running')state.demo.status='interrupted';
 if(state.mission?.status==='running'){state.mission.status='interrupted';state.activity.unshift({id:randomUUID(),kind:'attention',text:'The app restarted. Existing provider outcomes were retained. Review before resuming.',at:new Date().toISOString()});}
 function save(){const snapshot=structuredClone(state);persist=persist.catch(()=>{}).then(()=>writeDocument('concierge',snapshot)).catch(e=>{storageStatus.error=e.message;storageStatus.healthy=false});return persist;}
 function log(kind,text,serviceId){state.activity.unshift({id:randomUUID(),kind,text,serviceId,at:new Date().toISOString()});state.activity=state.activity.slice(0,100);save();}
-function publicState(){return {...state,services,active,profileSyncing:!!memorySyncPromise,storage:storageStatus,computer:{instanceId:config().id,desktopReady:!!config().desktopReady,model:AGENT_MODEL}};}
+function dayPlan(){return {...buildDayPlan(state.bookings,state.profile,{removed:state.removedDayItems||[]}),removed:state.removedDayItems||[]};}
+function publicState(){return {...state,dayPlan:dayPlan(),services,active,profileSyncing:!!memorySyncPromise,storage:storageStatus,computer:{instanceId:config().id,desktopReady:!!config().desktopReady,model:AGENT_MODEL}};}
 async function writeRemote(file,value){const b=Buffer.from(typeof value==='string'?value:JSON.stringify(value,null,2)).toString('base64');const r=await control(`/v1/instances/${config().id}/exec`,{command:`umask 077; mkdir -p /home/node/free-sf/receipts && printf '%s' '${b}' | base64 -d > /home/node/free-sf/${file}`});if(r.exit_code!==0)throw Error('Could not save the mission to the Agent37 computer.');}
 
 async function readMemoryFile(name){
@@ -46,7 +52,7 @@ async function syncProfileMemory(){
    state.profileMemory={status:'synced',hash,syncedAt:new Date().toISOString(),error:null};await save();
   }catch(e){state.profileMemory={...state.profileMemory,status:'error',error:e.message};await save();throw e;}
  })();
- try{return await memorySyncPromise;}finally{memorySyncPromise=null;}
+ try{return await memorySyncPromise;}finally{memorySyncPromise=null;setTimeout(drainTaskQueue,0);}
 }
 
 async function captureProvider(id){
@@ -105,7 +111,9 @@ async function focusDiscovery(){
 }
 function queueBookings(){
  for(const offer of state.demo?.opportunities||[]){
-  if(!offer.simulated||(!state.profile.allowTrials&&offer.kind==='trial')||state.bookings.some(j=>j.offer.url===offer.url))continue;
+  if(!offer.simulated||(!state.profile.allowTrials&&offer.kind==='trial'))continue;
+  const existing=state.bookings.find(j=>j.offer.url===offer.url);
+  if(existing){if(offer.plannedVisit&&existing.status==='ready')existing.offer={...existing.offer,...offer};continue;}
   state.bookings.push(createBooking(offer,state.profile));
  }
 }
@@ -132,29 +140,69 @@ async function resumeBookings(){
  catch(e){state.mission.status='failed';log('attention',e.message,'booking');}
  finally{active=false;await save();}
 }
-async function executeDemo(instruction=''){
+async function executeDemo(instruction='',task=null){
  if(state.demo?.id){state.missionArchive=[structuredClone(state.demo),...(state.missionArchive||[])].slice(0,30);}
  active=true;stopRequested=false;
  state.demo={id:randomUUID(),status:'running',startedAt:new Date().toISOString(),opportunities:[],tools:[],model:AGENT_MODEL,instruction};
  state.mission={id:state.demo.id,status:'running',current:'discovery',responseId:null};
- log('working','Live discovery started. Research is real; booking confirmations will be simulated.','discovery');await save();
+ if(task){task.status='running';task.missionId=state.demo.id;task.startedAt=new Date().toISOString();}
+ log('working','Scout is finding options for your plan.','discovery');await save();
  try{
  await syncProfileMemory();
- const answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
+ const monid=await prepareMonid({mission:state.demo.id,writeRemote});state.monid={configured:monid.configured,runs:[]};
+ const answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
   if(type==='started'){Object.assign(state.mission,d);Object.assign(state.demo,d);save();}
   if(type==='tool'){state.demo.tools.push({tool:d.tool,label:d.label,at:new Date().toISOString()});log('browser',({read_file:'Read Scout’s profile and notes.',write_file:'Updated Scout’s notes.',execute_code:'Checked source details.',browser_console:'Inspected the current page.'})[d.tool]||d.label||d.tool,'discovery');}
  });
  state.mission.responseId=null;
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}-raw.json`,JSON.stringify(answer,null,2),{mode:0o600});
  if(stopRequested){state.demo.status='paused';return;}
- const researched=demoResults(parseJson(answer.output),{searched:state.demo.tools.some(t=>/search/i.test(t.tool))});
+ if(monid.configured){try{const raw=await readMemoryFile('monid-ledger.json');const ledger=JSON.parse(raw||'null');if(ledger?.mission===state.demo.id)state.monid.runs=ledger.runs.map(r=>({runId:r.runId,provider:r.provider,endpoint:r.endpoint,status:r.status,reservedUSD:r.reservedUSD,httpStatus:r.providerResponse?.httpStatus}));for(const r of state.monid.runs)log('browser',`Monid · ${r.provider} · ${r.status}`,'discovery');}catch{}}
+ const parsedOutput=parseJson(answer.output);
+ if(task&&parsedOutput.question){task.question=questionSchema.parse(parsedOutput.question);task.status='needs_input';state.demo.status='needs_input';log('attention',task.question.prompt,'task');return;}
+ const researched=demoResults(parsedOutput,{searched:state.demo.tools.some(t=>/search/i.test(t.tool))||state.monid?.runs.some(r=>r.status==='COMPLETED'&&r.httpStatus>=200&&r.httpStatus<400)});
  Object.assign(state.demo,researched,{status:'booking',finishedAt:new Date().toISOString(),sessionId:answer.sessionId});
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}.json`,JSON.stringify({answer,...state.demo},null,2),{mode:0o600});
  try{await focusDiscovery();}catch(e){log('attention',e.message,'discovery');}
  queueBookings();await processBookings();state.demo.status=stopRequested?'paused':'completed';
  log('done',`Your week is ready: ${state.bookings.filter(j=>j.status==='ready').length} plans and perks arranged.`,'discovery');
  }catch(e){state.demo.status=stopRequested?'paused':'failed';state.demo.error=e.message;if(state.mission.responseId){try{await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});}catch{}}log('attention',e.message,'discovery');}
- finally{active=false;state.mission.status=state.demo.status;state.mission.responseId=null;await save();}
+ finally{active=false;state.mission.status=state.demo.status;state.mission.responseId=null;if(task&&task.status==='running'){task.status=state.demo.status==='completed'?'completed':state.demo.status==='paused'?'paused':'failed';task.error=state.demo.error||null;task.result=state.demo.summary||null;task.finishedAt=new Date().toISOString();}if(task){task.opportunities=structuredClone(state.demo.opportunities||[]);task.activity=structuredClone(state.demo.tools||[]);}await save();setTimeout(drainTaskQueue,0);}
+}
+let queueDraining=false;
+async function drainTaskQueue(){
+ if(queueDraining||active||memorySyncPromise||state.taskQueuePaused)return;
+ queueDraining=true;
+ try{let task;while(!active&&!state.taskQueuePaused&&(task=state.tasks.find(t=>t.status==='queued')))await executeDemo(taskInstruction(task),task);}
+ finally{queueDraining=false;}
+}
+function findTask(id){const task=state.tasks.find(t=>t.id===id);if(!task)throw apiError(404,'Task not found.');return task;}
+async function addTask(input,{idempotencyKey}={}){
+ const task=newTask(input);
+ if(idempotencyKey){const prior=state.tasks.find(t=>t.idempotencyKey===idempotencyKey);if(prior){if(prior.text!==task.text)throw apiError(409,'Idempotency-Key already used for a different task.');return prior;}task.idempotencyKey=idempotencyKey;}
+ if(!state.onboarded)throw apiError(400,'Save your profile first.');
+ state.tasks.push(task);await save();if(storageStatus.error)throw apiError(503,'Could not save the task.');setTimeout(drainTaskQueue,0);return task;
+}
+async function submitAnswer(id,input){const task=findTask(id);answerTask(task,input);await save();setTimeout(drainTaskQueue,0);return task;}
+async function retryTask(id){const task=findTask(id);if(!['failed','paused','cancelled'].includes(task.status))throw apiError(409,'Task is already in progress or completed.');task.status='queued';task.error=null;task.finishedAt=null;await save();setTimeout(drainTaskQueue,0);return task;}
+async function cancelTask(id){
+ const task=findTask(id);
+ if(['completed','failed','cancelled'].includes(task.status))return task;
+ if(task.status==='running'&&active){stopRequested=true;if(state.mission?.responseId){const r=await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});if(!r.ok)throw apiError(502,'Agent could not be stopped yet.');}}
+ task.status='cancelled';task.question=null;task.finishedAt=new Date().toISOString();await save();return task;
+}
+async function setTaskQueue(paused){
+ state.taskQueuePaused=z.boolean().parse(paused);await save();
+ if(paused&&active){stopRequested=true;if(state.mission?.responseId){const r=await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});if(!r.ok)throw apiError(502,'Queue paused, but the active agent could not be stopped yet.');}}
+ if(!paused){for(const task of state.tasks)if(task.status==='paused'){task.status='queued';task.error=null;}await save();setTimeout(drainTaskQueue,0);}
+ return {paused:!!state.taskQueuePaused};
+}
+async function changeDayItem(id,action){
+ z.string().min(1).max(200).parse(id);
+ const removed=state.removedDayItems||[];
+ if(action==='remove'){if(!removed.includes(id)&&!dayPlan().items.some(i=>i.id===id))throw apiError(404,'Plan item not found.');state.removedDayItems=[...new Set([...removed,id])];}
+ else {if(!removed.includes(id))throw apiError(404,'Removed plan item not found.');state.removedDayItems=removed.filter(x=>x!==id);}
+ await save();return dayPlan();
 }
 function apiError(status,message){return Object.assign(Error(message),{status});}
 async function updateProfile(input){
@@ -171,8 +219,20 @@ function missionView(id){
  if(!mission)throw apiError(404,'Mission not found.');
  return {id:mission.id,status:mission.status,instruction:mission.instruction||'',started_at:mission.startedAt,finished_at:mission.finishedAt||null,error:mission.error||null,activity:mission.tools||[],opportunities:mission.opportunities||[],plans_url:'/api/v1/plans'};
 }
+function taskView(task){
+ const mission=state.demo?.id===task.missionId?state.demo:(state.missionArchive||[]).find(m=>m.id===task.missionId);
+ return {...task,opportunities:task.opportunities||mission?.opportunities||[],activity:task.activity||mission?.tools||[]};
+}
+async function updateNotes({notes}){
+ z.string().max(20000).parse(notes);
+ if(active||memorySyncPromise)throw apiError(409,'Pause the queue before updating notes.');
+ memorySyncPromise=(async()=>{await writeRemote('NOTES.md',notes);const saved=await readMemoryFile('NOTES.md');if(saved!==notes)throw apiError(502,'Notebook readback did not match.');return {notes:saved};})();
+ try{return await memorySyncPromise;}finally{memorySyncPromise=null;setTimeout(drainTaskQueue,0);}
+}
 export const conciergeApi={
- status:()=>({active,profile_ready:state.onboarded,profile_memory:state.profileMemory||null,current_mission:state.demo?missionView(state.demo.id):null,model:AGENT_MODEL}),
+ tasks:()=>state.tasks.map(taskView),task:id=>taskView(findTask(id)),addTask,answerTask:submitAnswer,retryTask,cancelTask,setTaskQueue,
+ taskQueue:()=>({paused:!!state.taskQueuePaused,active_task_id:state.tasks.find(t=>t.status==='running')?.id||null}),
+ status:()=>({active,queue_paused:!!state.taskQueuePaused,profile_ready:state.onboarded,profile_memory:state.profileMemory||null,current_mission:state.demo?missionView(state.demo.id):null,model:AGENT_MODEL}),
  profile:()=>state.profile,
  updateProfile:async patch=>{await updateProfile(mergeProfilePatch(state.profile,patch));return {profile:state.profile,memory:state.profileMemory};},
  plans:()=>state.bookings.map(j=>({id:j.id,status:j.status,created_at:j.createdAt,updated_at:j.updatedAt||null,offer:j.offer,history:j.history,provider_confirmation:null})),
@@ -190,9 +250,21 @@ export const conciergeApi={
  cancel:async id=>{const mission=missionView(id);if(id!==state.demo?.id||!active)return mission;stopRequested=true;if(state.mission?.responseId){const r=await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});if(!r.ok)throw apiError(502,'Agent could not be paused yet.');}return {...missionView(id),stop_requested:true};},
  changePlan:async(id,action)=>{const job=state.bookings.find(j=>j.id===id);if(!job)throw apiError(404,'Plan not found.');if(action==='remove'&&job.status!=='cancelled')transitionBooking(job,'cancelled');if(action==='restore'&&job.status==='cancelled')transitionBooking(job,'queued');await save();return {id:job.id,status:job.status};},
  memory:async()=>({profile:await readMemoryFile('PROFILE.md'),notes:await readMemoryFile('NOTES.md')}),
- calendar:()=>bookingsCalendar(state.bookings)
+ changeDayItem,
+ syncMemory:async()=>{if(active)throw apiError(409,'Pause the queue before syncing the notebook.');await syncProfileMemory();return state.profileMemory;},
+ updateNotes,
+ connections:async()=>{const d=await control(`/v1/instances/${config().id}/integrations/connections`);return {connections:(d.connections||[]).map(c=>({id:c.id,toolkit:c.toolkitSlug,status:c.status}))};},
+ connect:async({toolkit})=>{z.enum(['gmail','googlecalendar']).parse(toolkit);const d=await control(`/v1/instances/${config().id}/integrations/connect`,{toolkit});return {redirectUrl:d.redirectUrl};},
+ resumePlans:async()=>{if(active)throw apiError(409,'Scout is already working.');if(!state.demo?.opportunities?.length)throw apiError(400,'Run a search first.');resumeBookings();return {started:true};},
+ dayPlan,
+ calendar:()=>bookingsCalendar(dayPlan().items)
 };
-export function registerConcierge(app){const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
+export function registerConcierge(app){setTimeout(drainTaskQueue,1000);const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
+ app.get('/api/concierge/tasks',(_req,res)=>res.json({tasks:state.tasks}));
+ app.post('/api/concierge/tasks',wrap(async(req,res)=>res.status(202).json(await addTask(req.body))));
+ app.post('/api/concierge/tasks/:id/answer',wrap(async(req,res)=>res.status(202).json(await submitAnswer(req.params.id,req.body))));
+ app.post('/api/concierge/tasks/:id/retry',wrap(async(req,res)=>res.json(await retryTask(req.params.id))));
+ app.post('/api/concierge/tasks/queue',wrap(async(req,res)=>res.json(await setTaskQueue(req.body.paused))));
  app.get('/api/concierge',(_req,res)=>res.json(publicState()));
  app.get('/api/concierge/bot-access',(_req,res)=>{const key=currentApiKey();res.json({enabled:!!key,suffix:key?.slice(-4)||null});});
  app.post('/api/concierge/bot-access',(_req,res)=>res.json({key:ensureApiKey()}));
@@ -204,7 +276,9 @@ export function registerConcierge(app){const wrap=fn=>(req,res,next)=>Promise.re
   if(action==='restore'&&job.status==='cancelled')transitionBooking(job,'queued');
   await save();res.json(publicState());
  }));
- app.get('/api/concierge/calendar.ics',(_req,res)=>res.type('text/calendar').attachment('free-sf-week.ics').send(bookingsCalendar(state.bookings)));
+ app.get('/api/concierge/day-plan',(_req,res)=>res.json(dayPlan()));
+ app.post('/api/concierge/day-plan/remove',wrap(async(req,res)=>{await changeDayItem(req.body.id,'remove');res.json(publicState());}));
+ app.get('/api/concierge/calendar.ics',(_req,res)=>res.type('text/calendar').attachment('free-sf-week.ics').send(bookingsCalendar(dayPlan().items)));
 
 
  app.post('/api/concierge/demo',wrap(async(_req,res)=>{if(active)return res.status(409).json({error:'Your agent is already working.'});if(!state.onboarded)return res.status(400).json({error:'Save your profile first.'});executeDemo();res.status(202).json({started:true});}));
@@ -214,7 +288,7 @@ export function registerConcierge(app){const wrap=fn=>(req,res,next)=>Promise.re
 
  app.post('/api/concierge/start',wrap(async(req,res)=>{if(active)return res.status(409).json({error:'Your agent is already working.'});if(!config().desktopReady)return res.status(409).json({error:'The Agent37 desktop is still being prepared.'});if(!state.onboarded)return res.status(400).json({error:'Save your profile first.'});if(state.mission?.responseId){const r=await instanceCall(`/v1/sessions/${state.mission.sessionId}`);if(r.ok){const live=await r.json();if(live.active_response_id)return res.status(409).json({error:'Your previous agent run is still active in the VM. Pause it before starting another.'});}}const ids=req.body.serviceId?[z.enum(services.map(s=>s.id)).parse(req.body.serviceId)]:state.profile.goals;
  execute(ids,{resume:!!req.body.resume});res.status(202).json({started:true});}));
- app.post('/api/concierge/pause',wrap(async(_req,res)=>{stopRequested=true;if(state.mission?.responseId){const r=await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});if(!r.ok)throw Error('The agent could not be paused yet.');}res.json({paused:true});}));
+ app.post('/api/concierge/pause',wrap(async(_req,res)=>{stopRequested=true;state.taskQueuePaused=true;await save();if(state.mission?.responseId){const r=await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});if(!r.ok)throw Error('The agent could not be paused yet.');}res.json({paused:true});}));
  app.post('/api/concierge/computer',wrap(async(req,res)=>{if(!config().desktopReady)return res.status(409).json({error:'The desktop image is still building.'});if(req.body.takeover&&active){stopRequested=true;if(state.mission?.responseId)await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});}
  if(state.demoMode&&!active&&!req.body.takeover)await focusDiscovery();
  const r=await control(`/v1/instances/${config().id}/signed-url`,{port:6901,ttl_seconds:60});const u=new URL(r.url);res.json({ws:`wss://${u.host}/websockify?a37_token=${encodeURIComponent(u.searchParams.get('a37_token'))}`});}));

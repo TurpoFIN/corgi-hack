@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import {registerConcierge} from './concierge.js';
+import {registerConcierge,conciergeApi} from './concierge.js';
 import {registerBotApi} from './bot-api.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -19,7 +19,7 @@ function save(){fs.writeFileSync(stateFile+'.tmp',JSON.stringify(state,null,2),{
 function log(kind,text,extra={}){const event={id:randomUUID(),kind,text,at:new Date().toISOString(),...extra};state.activity.unshift(event);state.activity=state.activity.slice(0,150);save();return event;}
 let activeJob=null;
 const app=express();app.disable('x-powered-by');app.use(express.json({limit:'100kb'}));
-registerBotApi(app);
+registerBotApi(app,{api:conciergeApi});
 app.use('/api',(req,res,next)=>{const allowed=['localhost','127.0.0.1','[::1]'];if(!allowed.includes(req.hostname))return res.status(403).json({error:'Local access only.'});if(req.headers.origin){try{if(new URL(req.headers.origin).host!==req.headers.host)return res.status(403).json({error:'Same-origin requests only.'});}catch{return res.status(403).json({error:'Invalid origin.'});}}res.set('Cache-Control','no-store');next();});
 registerConcierge(app);
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);

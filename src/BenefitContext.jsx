@@ -1,6 +1,6 @@
 import React from 'react';
-import {Ticket,Utensils,Dumbbell,Users,Waves,HeartPulse,Music,Sparkles,Clock,Truck,Tag,MapPin,Info} from 'lucide-react';
-const icons={ticket:Ticket,food:Utensils,fitness:Dumbbell,classes:Users,pool:Waves,trainer:HeartPulse,music:Music,culture:Sparkles,duration:Clock,delivery:Truck,savings:Tag,location:MapPin};
+import {ShowerHead,Ticket,Utensils,Dumbbell,Users,Waves,HeartPulse,Music,Sparkles,Clock,Truck,Tag,MapPin,Info} from 'lucide-react';
+const icons={shower:ShowerHead,ticket:Ticket,food:Utensils,fitness:Dumbbell,classes:Users,pool:Waves,trainer:HeartPulse,music:Music,culture:Sparkles,duration:Clock,delivery:Truck,savings:Tag,location:MapPin};
 export default function BenefitContext({offer,details=false}){
  const summary=offer.benefitSummary||offer.sourceEvidence;
  if(!summary&&!offer.benefits?.length)return null;

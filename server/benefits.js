@@ -1,6 +1,6 @@
 import {z} from 'zod';
 export const benefitSchema=z.object({
- icon:z.enum(['ticket','food','fitness','classes','pool','trainer','music','culture','duration','delivery','savings','location']),
+ icon:z.enum(['shower','ticket','food','fitness','classes','pool','trainer','music','culture','duration','delivery','savings','location']),
  label:z.string().trim().min(2).max(64),
  evidence:z.string().trim().min(5).max(400)
 });

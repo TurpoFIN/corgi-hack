@@ -48,4 +48,17 @@ Partial profile updates must pass through `mergeProfilePatch`: only explicitly s
 
 ## Calendar view
 
-`src/CalendarPage.jsx` shows ready, dated booking records in a Pacific-time week view. `src/calendar-links.js` creates Google event-template links; the user saves those in Google. Unknown end times use a clearly described, editable one-hour planning block. This is not automatic Google synchronization. Existing account connection controls initiate Google OAuth. Do not present a local plan or an opened event form as a saved Google event.
+`src/CalendarPage.jsx` shows the next seven days plus a selected-day itinerary. `server/day-plan.js` combines dated events, researched planned visits and date-bounded public service observations in `server/daily-resources.js`. It preserves event conflicts as alternatives, allows travel buffers, applies meal opt-out/diet preferences, and uses the YMCA one-day pass only once. These are personal visit times, not provider receipts. Recheck the source observations after their validity window; do not silently extend them. A new agent result can include `plannedVisit` with opening-hours evidence. `src/calendar-links.js` creates Google event-template links; the user saves those in Google. Unknown end times use a clearly described, editable one-hour planning block. This is not automatic Google synchronization. Existing account connection controls initiate Google OAuth. Do not present a local plan or an opened event form as a saved Google event.
+
+
+## Task inbox
+
+`server/tasks.js` defines task inputs and inline clarification questions. The same persisted InsForge document holds the queue and answers. `drainTaskQueue` serializes real Agent37 runs; a question pauses only that task, and other queued tasks may continue. Running tasks become paused on restart. `src/TaskList.jsx` stays compact: input, one-line rows, collapsed completed tasks, and expanded questions only. Do not reintroduce a large introduction or guidance paragraphs.
+
+## Monid tools
+
+`server/monid.js` reads `MONID_API_KEY` from the process or `hsec get MONID_API_KEY` before each mission; override the vault name with `MONID_HSEC_NAME`. No restart is needed after adding the vault entry. The private credential and Python client are installed on the Agent37 VM, outside Git and the profile document. The agent discovers and inspects tools before calling them for public search or scraping. `server/monid-vm.py` rejects unknown/variable pricing and reserves the quoted fixed per-call cost before dispatch, with at most five runs, $0.10 per call and $0.25 per mission. It records run IDs and provider status; the app records safe metadata only. The wrapper has local budget-boundary checks; a real Monid run still needs the user's vault credential. Do not claim Monid execution based on configuration alone.
+
+## Application layout
+
+`src/workspace.css` provides the sidebar app shell. The overview starts with the compact task inbox and `AgendaOverview` upcoming itinerary, plus agent status and controls. Saved offers are expandable below the agenda. Clicking a scheduled stop opens that stop in Calendar. Keep operational content first; do not bring back the slogan hero, decorative offer cards, or promotional footer.
