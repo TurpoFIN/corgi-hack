@@ -8,8 +8,10 @@ import {outcomeSchema} from './outcome.js';
 import {demoResults,discoveryPrompt} from './demo.js';
 import {createBooking,transitionBooking,bookingsCalendar} from './bookings.js';
 import {buildDayPlan} from './day-plan.js';
+import {sfDay} from '../src/calendar-links.js';
 import {prepareMonid} from './monid.js';
 import {sources,CATEGORIES,SOURCE_MAP_VERSION,researchPlan,researchInstruction,sourceCoverage,needsExpansion} from './source-map.js';
+import {techWeekContext} from './tech-week.js';
 import {applyDealValues} from './deal-values.js';
 import {consumerOpportunity} from '../src/opportunity-policy.js';
 import {syncCatalog,catalogObservations,saveObservations,catalogStorage} from './catalog-store.js';
@@ -160,11 +162,19 @@ async function executeDemo(instruction='',task=null,replay=null){
   log('working','Recovering the saved research result.','discovery');
  }else{
  await syncProfileMemory();
- const plan=researchPlan(instruction,state.profile);plan.priorObservations=await catalogObservations();state.demo.searchPlan=plan;
+ const plan=researchPlan(instruction,state.profile);const itinerary=dayPlan();plan.currentItinerary=itinerary.items.map(j=>({title:j.offer.title,startsAt:j.offer.startsAt,endsAt:j.offer.endsAt,venue:j.offer.venue}));plan.uncoveredDates=itinerary.days.filter(day=>!itinerary.items.some(j=>sfDay(j.offer.startsAt)===day));plan.existingOfferUrls=state.bookings.map(j=>j.offer.url);plan.priorObservations=await catalogObservations();state.demo.searchPlan=plan;
  await writeRemote('SOURCE_MAP.json',{version:SOURCE_MAP_VERSION,categories:CATEGORIES,sources});
  await writeRemote('SEARCH_PLAN.json',plan);
+ if(plan.categories.includes('events')){try{
+  const calendar=await techWeekContext();
+  await writeRemote('TECH_WEEK.json',calendar);
+  await writeRemote('tech-week.py',fs.readFileSync(new URL('./tech-week-vm.py',import.meta.url),'utf8'));
+  if(calendar.searched>0)state.demo.tools.push({tool:'tech_week_search',label:`https://www.tech-week.com/api/mcp — ${calendar.searched} upcoming open event records searched`,at:new Date().toISOString()});
+  plan.officialCalendar=calendar;
+ }catch(e){log('attention',e.message,'discovery');}}
+
  monid=await prepareMonid({mission:state.demo.id,writeRemote});state.monid={configured:monid.configured,runs:[]};
- answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+researchInstruction(plan)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:'')+(task?.resumeSession?'\nContinue the interrupted research in this session. Reuse sources already read; finish the result rather than repeating discovery.':''),(type,d)=>{
+ answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+researchInstruction(plan)+'\n'+(plan.officialCalendar?'Official Tech Week API has already searched '+plan.officialCalendar.searched+' real open event records. Read /home/node/free-sf/TECH_WEEK.json for dated candidates across morning, noon, afternoon and evening. Use python3 /home/node/free-sf/tech-week.py get_event with JSON {eventId:actual id} to read full source descriptions; search_events supports city:[sf], date, registration:[open], limit and page. Use list_filters before passing category keys. Prioritize gaps and verify actual free admission and included food on the official detail/RSVP page. SF Tech Week ends October11; search normal SF sources for later dates. These are source leads, not confirmed bookings.':'')+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:'')+(task?.resumeSession?'\nContinue the interrupted research in this session. Reuse sources already read; finish the result rather than repeating discovery.':''),(type,d)=>{
   if(type==='started'){Object.assign(state.mission,d);Object.assign(state.demo,d);save();}
   if(type==='tool'){state.demo.tools.push({tool:d.tool,label:d.label,at:new Date().toISOString()});log('browser',({read_file:'Read Scout’s profile and notes.',write_file:'Updated Scout’s notes.',execute_code:'Checked source details.',browser_console:'Inspected the current page.'})[d.tool]||d.label||d.tool,'discovery');}
  },task?.resumeSession?{sessionId:task.resumeSession.id}:{});

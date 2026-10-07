@@ -90,3 +90,5 @@ The local server checks due schedules every 30 seconds while running. Schedules 
 Task `coverage` exposes observed searched/opened providers, source URLs, free-match counts and `limited`. Use these fields to describe search scope accurately. A completed task with no matching offer should lead to a scoped explanation or a follow-up task with broader permitted constraints, not a blanket claim that San Francisco has no deals.
 
 Offers include `valueUsd`, a positive whole-dollar value used by the deal-value badge. It travels with task opportunities, plans and calendar items. `priceToday` remains the separate upfront amount.
+
+`/day-plan` separates the selected itinerary in `items` from `alternatives`. Alternatives carry `access` (`Alternative` or `Waitlist`), `reason`, and `planId`, plus the original offer and dates. A saved candidate is not automatically a scheduled visit.

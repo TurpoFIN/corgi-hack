@@ -30,3 +30,18 @@ test('retained assistance records never refill the consumer calendar',()=>{
  const assistance={id:'old',status:'ready',offer:{title:'Hygiene Hub',url:'https://www.stanthonysf.org/services/hygiene-hub/',freeVerified:true,priceToday:0,kind:'offer',plannedVisit:{startsAt:'2026-10-08T16:00:00Z',endsAt:'2026-10-08T17:00:00Z',venue:'150 Golden Gate'}}};
  assert.equal(buildDayPlan([assistance],profile,{now}).items.length,0);
 });
+test('dated food events win over flexible gym suggestions and earlier no-food events',()=>{
+ const gymVisit={...gym,offer:{...gym.offer,category:'Fitness',plannedVisit:{startsAt:'2026-10-08T00:30:00Z',endsAt:'2026-10-08T01:30:00Z',venue:'Gym',sourceUrl:'https://example.com',openingHoursEvidence:'Open until 9'}}};
+ const event={id:'food',status:'ready',offer:{title:'Builders meet',category:'Events & food',freeVerified:true,priceToday:0,url:'https://example.com/food',startsAt:'2026-10-08T01:00:00Z',endsAt:'2026-10-08T03:00:00Z',venue:'Meetup',benefits:[{icon:'food',label:'Pizza and drinks',evidence:'Pizza provided'}]}};
+ const plan=buildDayPlan([gymVisit,event],profile,{now});assert.ok(plan.items.some(j=>j.bookingId==='food'));assert.ok(!plan.items.some(j=>j.bookingId==='gym'));assert.ok(plan.alternatives.some(j=>j.id==='gym'));
+});
+test('waitlist events remain visible alternatives and never block an available event',()=>{
+ const event={id:'wait',status:'ready',offer:{title:'Founder Salon',freeVerified:true,priceToday:0,url:'https://example.com/wait',startsAt:'2026-10-08T17:00:00Z',endsAt:'2026-10-08T20:00:00Z',terms:'Event Full. Join Waitlist.'}};
+ const plan=buildDayPlan([event],profile,{now});assert.equal(plan.items.length,0);assert.equal(plan.alternatives[0].access,'Waitlist');
+});
+test('included food takes precedence over an earlier market with paid vendors',()=>{
+ const make=(id,start,end,benefits)=>({id,status:'ready',offer:{title:id,url:'https://example.com/'+id,freeVerified:true,priceToday:0,startsAt:start,endsAt:end,venue:id,benefits}});
+ const market=make('market','2026-10-09T17:00:00-07:00','2026-10-09T21:00:00-07:00',[{icon:'food',label:'Food for purchase',evidence:'Paid food vendors'}]);
+ const dinner=make('dinner','2026-10-09T18:30:00-07:00','2026-10-09T21:00:00-07:00',[{icon:'food',label:'Food included',evidence:'RSVP includes food and one drink ticket'}]);
+ const plan=buildDayPlan([market,dinner],profile,{now});assert.ok(plan.items.some(j=>j.bookingId==='dinner'));assert.ok(plan.alternatives.some(j=>j.id==='market'));
+});

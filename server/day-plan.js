@@ -26,14 +26,32 @@ export function buildDayPlan(bookings,profile,{now=Date.now(),start=sfDay(now),r
   if(items.some(j=>sfDay(j.offer.startsAt)===day&&ms(startAt)<ms(j.offer.endsAt)+(j.offer.venue===offer.venue?0:30*60000)&&ms(endAt)>ms(j.offer.startsAt)-(j.offer.venue===offer.venue?0:30*60000)))return false;
   items.push({id,status:'ready',purpose,access,createdAt:new Date(now).toISOString(),...extra,offer:{...offer,startsAt:startAt,endsAt:endAt,planDescription:access==='Walk in'?'Suggested visit within published service hours.':'Personal itinerary time; provider admission rules apply.'}});return true;
  };
- for(const j of ready.filter(j=>j.offer.plannedVisit&&j.offer.kind!=='event')){const v=j.offer.plannedVisit;if(ms(v.endsAt)>ms(v.startsAt))add('visit-'+j.id,{...j.offer,venue:v.venue,sources:[...(j.offer.sources||[]),v.sourceUrl],schedule:v.openingHoursEvidence},j.offer.category==='Fitness'?'fitness':'food',v.startsAt,v.endsAt,'Planned visit',{bookingId:j.id});}
- // Keep exact event times; overlapping events stay available as alternatives.
- for(const j of ready.filter(j=>j.offer.startsAt).sort((a,b)=>ms(a.offer.startsAt)-ms(b.offer.startsAt))){
-  const o=j.offer;const sourceEnd=o.endsAt||new Date(ms(o.startsAt)+3600000).toISOString();
-  const longVisit=ms(sourceEnd)-ms(o.startsAt)>3*3600000;
-  const end=longVisit?new Date(ms(o.startsAt)+90*60000).toISOString():sourceEnd;
-  if(!add('event-'+j.id,o,o.category==='Fitness'?'fitness':'event',o.startsAt,end,longVisit?'90-min visit':'Event',{bookingId:j.id,eventWindow:{startsAt:o.startsAt,endsAt:sourceEnd}})&&days.includes(sfDay(o.startsAt))&&ms(end)>now)alternatives.push(j);
+ // Rank dated opportunities before flexible gym visits; source order is not priority.
+ const candidates=[];
+ for(const j of ready){
+  const o=j.offer,v=o.plannedVisit;
+  const dated=!!o.startsAt;
+  if(!dated&&!v)continue;
+  const startAt=dated?o.startsAt:v.startsAt;
+  const sourceEnd=dated?(o.endsAt||new Date(ms(startAt)+3600000).toISOString()):v.endsAt;
+  if(!(ms(sourceEnd)>ms(startAt)))continue;
+  const longVisit=dated&&ms(sourceEnd)-ms(startAt)>3*3600000;
+  const endAt=longVisit?new Date(ms(startAt)+90*60000).toISOString():sourceEnd;
+  const foodText=(o.benefits||[]).filter(b=>b.icon==='food').map(b=>b.label+' '+b.evidence).join(' ');
+  const includedFood=/included|complimentary|pizza|appetizers|provided|dinner|meal|drink ticket/i.test(foodText)&&!/not (?:free|included)|purchase|paid|cash.bar|for sale/i.test(foodText);
+  const tech=/\bAI\b|engineer|founder|builder|developer|tech week/i.test(o.title+' '+(o.benefitSummary||''));
+  const waitlist=/event full|join (?:the )?waitlist|waitlist.only/i.test(o.terms||'');
+  const priority=(dated?100:30)+(includedFood?50:0)+(tech?20:0)+(o.category==='Fitness'?10:0);
+  candidates.push({job:j,id:(dated?'event-':'visit-')+j.id,offer:dated?o:{...o,venue:v.venue,sources:[...(o.sources||[]),v.sourceUrl],schedule:v.openingHoursEvidence},startAt,endAt,sourceEnd,priority,waitlist,dated,longVisit});
  }
+ for(const c of candidates.sort((a,b)=>b.priority-a.priority||ms(a.startAt)-ms(b.startAt))){
+  if(removed.includes(c.id)||!days.includes(sfDay(c.startAt))||ms(c.startAt)<now)continue;
+  const access=c.dated?(c.longVisit?'90-min visit':'Event'):'Planned visit';
+  if(c.waitlist||!add(c.id,c.offer,c.offer.category==='Fitness'?'fitness':(!c.dated&&c.offer.category==='Meal delivery'?'food':'event'),c.startAt,c.endAt,access,{bookingId:c.job.id,eventWindow:{startsAt:c.startAt,endsAt:c.sourceEnd}})){
+   alternatives.push({...c.job,planId:c.id,alternative:true,access:c.waitlist?'Waitlist':'Alternative',reason:c.waitlist?'Event is full':'Overlaps your plan',offer:{...c.offer,startsAt:c.startAt,endsAt:c.endAt},eventWindow:{startsAt:c.startAt,endsAt:c.sourceEnd}});
+  }
+ }
+ alternatives.sort((a,b)=>ms(a.offer.startsAt)-ms(b.offer.startsAt));
  const wantsFood=profile.interests?.includes('food')||profile.goals?.some(x=>['hellofresh','factor'].includes(x));
  const wantsFitness=profile.interests?.includes('fitness')||profile.goals?.some(x=>['fitness','classpass'].includes(x));
  const isSF=/^(san francisco|sf)$/i.test(profile.city.trim());
