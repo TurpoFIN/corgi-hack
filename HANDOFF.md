@@ -53,7 +53,7 @@ Partial profile updates must pass through `mergeProfilePatch`: only explicitly s
 
 ## Task inbox
 
-`server/tasks.js` defines task inputs and inline clarification questions. The same persisted InsForge document holds the queue and answers. `drainTaskQueue` serializes real Agent37 runs; a question pauses only that task, and other queued tasks may continue. Running tasks become paused on restart. `src/TaskList.jsx` stays compact: input, one-line rows, collapsed completed tasks, and expanded questions only. Do not reintroduce a large introduction or guidance paragraphs.
+`server/tasks.js` defines task inputs and inline clarification questions. The same persisted InsForge document holds the queue and answers. `drainTaskQueue` serializes real Agent37 runs; a question pauses only that task, and other queued tasks may continue. Running tasks become paused on restart. `src/TaskList.jsx` stays compact: input, vertically stacked rounded task bubbles (one per row), static outline circles that become filled checkmarks, and right-side status badges only on unfinished tasks. Recently completed cards stay visible with timestamps and concise source-based outcomes; do not add redundant Done badges. Do not reintroduce a large introduction or guidance paragraphs.
 
 ## Monid tools
 

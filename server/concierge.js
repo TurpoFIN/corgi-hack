@@ -34,7 +34,7 @@ if(state.mission?.status==='running'){state.mission.status='interrupted';state.a
 function save(){const snapshot=structuredClone(state);persist=persist.catch(()=>{}).then(()=>writeDocument('concierge',snapshot)).catch(e=>{storageStatus.error=e.message;storageStatus.healthy=false});return persist;}
 function log(kind,text,serviceId){state.activity.unshift({id:randomUUID(),kind,text,serviceId,at:new Date().toISOString()});state.activity=state.activity.slice(0,100);save();}
 function dayPlan(){return {...buildDayPlan(state.bookings,state.profile,{removed:state.removedDayItems||[]}),removed:state.removedDayItems||[]};}
-function publicState(){return {...state,dayPlan:dayPlan(),services,active,profileSyncing:!!memorySyncPromise,storage:storageStatus,computer:{instanceId:config().id,desktopReady:!!config().desktopReady,model:AGENT_MODEL}};}
+function publicState(){return {...state,tasks:state.tasks.map(taskView),dayPlan:dayPlan(),services,active,profileSyncing:!!memorySyncPromise,storage:storageStatus,computer:{instanceId:config().id,desktopReady:!!config().desktopReady,model:AGENT_MODEL}};}
 async function writeRemote(file,value){const b=Buffer.from(typeof value==='string'?value:JSON.stringify(value,null,2)).toString('base64');const r=await control(`/v1/instances/${config().id}/exec`,{command:`umask 077; mkdir -p /home/node/free-sf/receipts && printf '%s' '${b}' | base64 -d > /home/node/free-sf/${file}`});if(r.exit_code!==0)throw Error('Could not save the mission to the Agent37 computer.');}
 
 async function readMemoryFile(name){
