@@ -18,3 +18,13 @@ test('result lines distinguish useful discoveries from unverified offers',()=>{
  assert.equal(taskOutcome({opportunities:[{title:'Hygiene Hub',freeVerified:true,priceToday:0}]}),'Found Hygiene Hub');
  assert.equal(taskOutcome({opportunities:[{title:'Discount',freeVerified:false,priceToday:9}]}),'Checked 1 option · no verified free match');
 });
+test('dismissed completions leave recent list but remain counted for today',()=>{
+ const t={status:'completed',finishedAt:'2026-10-07T22:00:00Z',dismissedAt:'2026-10-07T22:01:00Z'};
+ const s=taskSections([t],Date.parse('2026-10-07T23:00:00Z'));assert.equal(s.completed.length,0);assert.equal(s.completedToday,1);
+});
+test('completed result cards expose benefit, source timing and the next step',async()=>{
+ const {completedTaskCard}=await import('../src/task-presentation.js');
+ const card=completedTaskCard({opportunities:[{title:'Hygiene Hub',freeVerified:true,priceToday:0,benefits:[{label:'Free shower access'}],schedule:'Sign-ups begin at 6am.',terms:'Sign up at St. Boniface Church before accessing showers.',venue:'150 Golden Gate Avenue; sign-up at 133 Golden Gate Avenue',url:'https://example.com/shower'}]});
+ assert.equal(card.headline,'Free shower access');assert.equal(card.next,'Sign up in person at 6am');assert.equal(card.action,'Directions');assert.match(decodeURIComponent(card.href),/133 Golden Gate Avenue, San Francisco, CA/);
+ assert.equal(completedTaskCard({opportunities:[]}).action,'Search more broadly');
+});

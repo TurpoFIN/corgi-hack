@@ -72,3 +72,19 @@ Use tasks for normal asynchronous work. Immediate missions return 409 when busy 
 `POST /connections` accepts `{"toolkit":"googlecalendar"}` or `{"toolkit":"gmail"}` and returns the provider's authorization URL. The provider controls account consent; a URL alone does not establish a connection. Calendar export does not automatically write into Google Calendar.
 
 Internal plan readiness and provider confirmation are separate. Check `provider_confirmation` before claiming a provider issued a reservation. Actual provider authentication, verification, and paid checkout requirements still apply. The API does not expose provider credentials or accept payment-card details.
+
+`POST /tasks/dismiss` accepts `{"ids":["task-id"],"dismissed":true}` to hide completed tasks from Recent. Use `dismissed:false` to restore them. This preserves the task, results, completion time and daily completion count. Non-completed tasks cannot be dismissed through this action.
+
+## Repeating tasks
+
+Supply `schedule` on `POST /tasks`: `{"text":"Find a free lunch","schedule":{"frequency":"daily","time":"08:00"}}`. Frequencies: `daily`, `weekdays`, `weekly` (with `dayOfWeek`, Sunday=0), and `monthly` (with `dayOfMonth`, 1–31). Times use America/Los_Angeles. The first task runs immediately; later occurrences are separate tasks with `scheduleId` and `scheduledFor`. `recurrence` exposes the current schedule and `nextRunAt` on each task view. Use `PATCH /tasks/{id}/schedule` with `{"enabled":false}` to pause future repeats or true to resume.
+
+The local server checks due schedules every 30 seconds while running. Schedules persist in InsForge. On restart, missed occurrences coalesce into one run; a previous queued/running/paused/waiting occurrence prevents overlap. Monthly dates beyond a month's length use its final day. Dismissing a completed result does not stop its repeat schedule.
+
+## Agent discovery and source coverage
+
+`GET /agent.md` is a public, credential-free operating guide. The copied agent setup links to it and to OpenAPI, so an agent can discover the lifecycle and available controls without navigating the app. OpenAPI includes concrete task, clarification and coverage response schemas.
+
+`GET /sources` returns the shared catalog, category labels and storage status. Each entry is a research route, not an assertion that an offer is available. Optional `category=fitness` filters by category ID; `q=Partiful` searches the source name, domain and research target. `total` is the full catalog size; `matched` is the filtered count. Unknown category IDs return 400. Use the returned categories rather than inventing IDs.
+
+Task `coverage` exposes observed searched/opened providers, source URLs, free-match counts and `limited`. Use these fields to describe search scope accurately. A completed task with no matching offer should lead to a scoped explanation or a follow-up task with broader permitted constraints, not a blanket claim that San Francisco has no deals.

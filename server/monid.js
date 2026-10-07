@@ -4,7 +4,7 @@ import {promisify} from 'node:util';
 const exec=promisify(execFile);
 export async function monidKey(){
  if(process.env.MONID_API_KEY)return process.env.MONID_API_KEY.trim();
- try{const {stdout}=await exec('hsec',['get',process.env.MONID_HSEC_NAME||'MONID_API_KEY'],{timeout:3000,maxBuffer:16384});return stdout.trim();}catch{return null;}
+ for(const name of [process.env.MONID_HSEC_NAME,'MONID_API_KEY','monid'].filter(Boolean)){try{const {stdout}=await exec('hsec',['get',name],{timeout:3000,maxBuffer:16384});if(stdout.trim())return stdout.trim();}catch{}}return null;
 }
 export async function prepareMonid({mission,writeRemote}){
  const key=await monidKey();

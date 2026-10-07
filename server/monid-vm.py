@@ -29,10 +29,15 @@ def main():
             if ledger.get('mission')!=config['mission']: ledger={'mission':config['mission'],'reserved':0,'runs':[]}
             spec=request('/v1/inspect',{'provider':payload['provider'],'endpoint':payload['endpoint']})
             price=spec.get('price',{})
-            amount=price.get('amount')
-            if price.get('type')!='PER_CALL' or price.get('currency')!='USD' or not isinstance(amount,(int,float)) or not math.isfinite(amount) or amount<0:
+            money=price.get('amount',{})
+            amount=money.get('value') if isinstance(money,dict) else money
+            currency=money.get('currency') if isinstance(money,dict) else price.get('currency')
+            if price.get('type')!='PER_CALL' or currency!='USD' or not isinstance(amount,(int,float)) or not math.isfinite(amount) or amount<0:
                 raise ValueError('A fixed USD per-call price is required; choose another endpoint.')
             flat=price.get('flatFee') or 0
+            if isinstance(flat,dict):
+                if flat.get('currency')!='USD': raise ValueError('Invalid flat fee currency')
+                flat=flat.get('value')
             if not isinstance(flat,(int,float)) or not math.isfinite(flat) or flat<0: raise ValueError('Invalid flat fee')
             amount+=flat
             if amount>0.10 or len(ledger['runs'])>=5 or ledger['reserved']+amount>0.25:

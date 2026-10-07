@@ -1,3 +1,4 @@
+import {consumerOpportunity} from './opportunity-policy';
 import React,{useState} from 'react';
 import BenefitContext from './BenefitContext';
 import {googleCalendarLink} from './calendar-links';
@@ -7,7 +8,7 @@ const time=d=>new Date(d).toLocaleTimeString('en-US',{timeZone:'America/Los_Ange
 export default function DemoLife({demo,active,name,bookings=[],onManage,onResume,busy}){
  const [selectedId,setSelectedId]=useState(null);
  const statusText={queued:'Queued',preparing:'Preparing',booking:'Booking',ready:'Ready',paused:'Paused',cancelled:'Removed'};
- const raw=demo?.opportunities||[],all=[...raw,...bookings.filter(j=>!raw.some(o=>o.url===j.offer.url)).map(j=>j.offer)];
+ const raw=(demo?.opportunities||[]).filter(consumerOpportunity),all=[...raw,...bookings.filter(j=>consumerOpportunity(j.offer)&&!raw.some(o=>o.url===j.offer.url)).map(j=>j.offer)];
  const items=all.map(o=>({...o,job:bookings.find(j=>j.offer.url===o.url)})),wins=items.filter(o=>o.simulated&&o.job?.status!=='cancelled'),events=wins.filter(o=>o.kind==='event').sort((a,b)=>new Date(a.startsAt)-new Date(b.startsAt)),passes=wins.filter(o=>o.kind!=='event'),review=items.filter(o=>!o.simulated),removed=items.filter(o=>o.job?.status==='cancelled');
  const selected=items.find(o=>o.id===selectedId),setSelected=o=>setSelectedId(o?.id||null),ready=bookings.filter(j=>j.status==='ready').length,pending=wins.some(o=>!o.job||['queued','paused'].includes(o.job.status));
 

@@ -3,12 +3,12 @@ export const interestOptions=['food','fitness','music','arts','tech','outdoors',
 export const profileSchema=z.object({
  name:z.string().trim().min(2).max(100),email:z.email(),phone:z.string().max(40).default(''),company:z.string().max(120).default(''),jobTitle:z.string().max(120).default(''),linkedin:z.string().max(250).default(''),eventUrl:z.union([z.url().refine(u=>u.startsWith('https://')),z.literal('')]).default(''),
  address:z.string().min(5).max(150),city:z.string().min(2).max(60),state:z.string().max(20),zip:z.string().max(15).default(''),diet:z.string().max(100),goals:z.array(z.enum(['classpass','hellofresh','factor','luma','fitness'])).min(1),maxUpfront:z.number().min(0).max(100),allowTrials:z.boolean(),notes:z.string().max(1000),daily:z.boolean(),
- communityMeals:z.boolean().default(true),
+ communityMeals:z.boolean().default(false),
  interests:z.array(z.enum(interestOptions)).max(8).default([]),timePreference:z.enum(['any','mornings','afternoons','evenings','weekends']).default('any'),maxDistanceMiles:z.number().min(1).max(25).default(5)
 });
 export function normalizeProfile(profile){
  const legacy=[...(profile.goals?.some(id=>['hellofresh','factor'].includes(id))?['food']:[]),...(profile.goals?.some(id=>['classpass','fitness'].includes(id))?['fitness']:[]),...(profile.goals?.includes('luma')?['social']:[])];
- return {communityMeals:true,interests:legacy,timePreference:'any',maxDistanceMiles:5,...profile};
+ return {communityMeals:false,interests:legacy,timePreference:'any',maxDistanceMiles:5,...profile};
 }
 const line=value=>String(value||'Not provided').replace(/[\r\n]+/g,' ');
 export function profileMarkdown(profile){

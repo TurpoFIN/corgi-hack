@@ -34,3 +34,26 @@ test('agent API authenticates and exposes task controls without owner UI',async 
 test('OpenAPI covers the autonomous task and notebook controls',()=>{
  for(const path of ['/tasks','/tasks/{id}','/tasks/queue','/tasks/{id}/answer','/tasks/{id}/retry','/tasks/{id}/cancel','/day-plan/{id}/remove','/day-plan/{id}/restore','/memory/notes','/memory/sync','/connections','/plans/resume'])assert.ok(openapi.paths[path],path);
 });
+test('API accepts and preserves repeat schedules for autonomous tasks',async t=>{
+ const {newTask}=await import('./tasks.js');
+ const app=express();app.use(express.json());registerBotApi(app,{authenticate:()=>true,api:{addTask:async input=>newTask(input,Date.parse('2026-10-07T22:00Z'))}});
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());
+ const response=await fetch(`http://127.0.0.1:${server.address().port}/api/v1/tasks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Find a free lunch',schedule:{frequency:'weekly',time:'09:00',dayOfWeek:2}})});
+ assert.equal(response.status,202);const task=await response.json();assert.equal(task.schedule.frequency,'weekly');assert.equal(task.schedule.nextRunAt,'2026-10-13T16:00:00.000Z');assert.equal(task.status,'queued');
+});
+
+test('agents discover filtered sources and workflow without loading the app',async t=>{
+ const {sources,CATEGORIES,SOURCE_MAP_VERSION}=await import('./source-map.js');
+ const app=express();app.use(express.json());registerBotApi(app,{authenticate:h=>h==='Bearer test-key',api:{sources:()=>({version:SOURCE_MAP_VERSION,categories:CATEGORIES,sources})}});
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));t.after(()=>server.close());
+ const base=`http://127.0.0.1:${server.address().port}/api/v1`;
+ const guide=await fetch(base+'/agent.md');assert.equal(guide.status,200);const text=await guide.text();assert.match(text,/needs_input/);assert.match(text,/Idempotency-Key/);assert.doesNotMatch(text,/fsf_[a-f0-9]{64}/);
+ assert.equal((await fetch(base+'/sources')).status,401);
+ const call=path=>fetch(base+path,{headers:{Authorization:'Bearer test-key'}});
+ const all=await(await call('/sources')).json();assert.equal(all.total,sources.length);
+ const fitness=await(await call('/sources?category=fitness')).json();assert.ok(fitness.matched>5);assert.ok(fitness.sources.every(s=>s.category==='fitness'));assert.equal(fitness.total,all.total);
+ const partiful=await(await call('/sources?q=Partiful')).json();assert.ok(partiful.sources.some(s=>s.id==='partiful'));
+ assert.equal((await call('/sources?category=nonexistent')).status,400);
+ assert.equal((await call('/sources?category[]=fitness')).status,400);
+ const taskSchema=openapi.components.schemas.Task;assert.ok(taskSchema.properties.status.enum.includes('needs_input'));assert.ok(taskSchema.properties.coverage);assert.equal(openapi.paths['/tasks/{id}'].get.responses[200].content['application/json'].schema.$ref,'#/components/schemas/Task');
+});

@@ -1,3 +1,4 @@
+import {consumerOpportunity} from '../src/opportunity-policy.js';
 import {dailyResources,ymcaFacility} from './daily-resources.js';
 import {sfDay} from '../src/calendar-links.js';
 export const addDay=(day,n)=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
@@ -17,7 +18,7 @@ const fresh=(r,day)=>r.checkedAt<=day&&r.validThrough>=day;
 export function buildDayPlan(bookings,profile,{now=Date.now(),start=sfDay(now),removed=[]}={}){
  const days=Array.from({length:7},(_,i)=>addDay(start,i));
  const items=[],alternatives=[];
- const ready=bookings.filter(j=>j.status==='ready'&&j.offer.freeVerified&&j.offer.priceToday===0);
+ const ready=bookings.filter(j=>j.status==='ready'&&consumerOpportunity(j.offer)&&j.offer.freeVerified&&j.offer.priceToday===0);
  const add=(id,offer,purpose,startAt,endAt,access,extra={})=>{
   if(removed.includes(id)||ms(startAt)<now)return false;
   const day=sfDay(startAt);

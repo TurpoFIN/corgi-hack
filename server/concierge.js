@@ -9,8 +9,12 @@ import {demoResults,discoveryPrompt} from './demo.js';
 import {createBooking,transitionBooking,bookingsCalendar} from './bookings.js';
 import {buildDayPlan} from './day-plan.js';
 import {prepareMonid} from './monid.js';
+import {sources,CATEGORIES,SOURCE_MAP_VERSION,researchPlan,researchInstruction,sourceCoverage,needsExpansion} from './source-map.js';
+import {consumerOpportunity} from '../src/opportunity-policy.js';
+import {syncCatalog,catalogObservations,saveObservations,catalogStorage} from './catalog-store.js';
 import {reusableResearch} from './research-recovery.js';
-import {newTask,answerTask,taskInstruction,questionSchema} from './tasks.js';
+import {enqueueScheduledTasks,recurrenceSpec,nextOccurrence} from './recurrence.js';
+import {newTask,answerTask,taskInstruction,questionSchema,setTaskDismissal} from './tasks.js';
 import {profileSchema,normalizeProfile,profileMarkdown,initialNotes,memoryInstruction,mergeProfilePatch} from './profile.js';
 import {currentApiKey,ensureApiKey} from './api-access.js';
 export const services=[
@@ -34,7 +38,7 @@ if(state.mission?.status==='running'){state.mission.status='interrupted';state.a
 function save(){const snapshot=structuredClone(state);persist=persist.catch(()=>{}).then(()=>writeDocument('concierge',snapshot)).catch(e=>{storageStatus.error=e.message;storageStatus.healthy=false});return persist;}
 function log(kind,text,serviceId){state.activity.unshift({id:randomUUID(),kind,text,serviceId,at:new Date().toISOString()});state.activity=state.activity.slice(0,100);save();}
 function dayPlan(){return {...buildDayPlan(state.bookings,state.profile,{removed:state.removedDayItems||[]}),removed:state.removedDayItems||[]};}
-function publicState(){return {...state,tasks:state.tasks.map(taskView),dayPlan:dayPlan(),services,active,profileSyncing:!!memorySyncPromise,storage:storageStatus,computer:{instanceId:config().id,desktopReady:!!config().desktopReady,model:AGENT_MODEL}};}
+function publicState(){return {...state,tasks:state.tasks.map(taskView),dayPlan:dayPlan(),sourceMap:{version:SOURCE_MAP_VERSION,categories:CATEGORIES,sources},services,active,profileSyncing:!!memorySyncPromise,storage:storageStatus,catalogStorage,computer:{instanceId:config().id,desktopReady:!!config().desktopReady,model:AGENT_MODEL}};}
 async function writeRemote(file,value){const b=Buffer.from(typeof value==='string'?value:JSON.stringify(value,null,2)).toString('base64');const r=await control(`/v1/instances/${config().id}/exec`,{command:`umask 077; mkdir -p /home/node/free-sf/receipts && printf '%s' '${b}' | base64 -d > /home/node/free-sf/${file}`});if(r.exit_code!==0)throw Error('Could not save the mission to the Agent37 computer.');}
 
 async function readMemoryFile(name){
@@ -155,8 +159,11 @@ async function executeDemo(instruction='',task=null,replay=null){
   log('working','Recovering the saved research result.','discovery');
  }else{
  await syncProfileMemory();
+ const plan=researchPlan(instruction,state.profile);plan.priorObservations=await catalogObservations();state.demo.searchPlan=plan;
+ await writeRemote('SOURCE_MAP.json',{version:SOURCE_MAP_VERSION,categories:CATEGORIES,sources});
+ await writeRemote('SEARCH_PLAN.json',plan);
  monid=await prepareMonid({mission:state.demo.id,writeRemote});state.monid={configured:monid.configured,runs:[]};
- answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
+ answer=await runAgent(memoryInstruction+'\n'+discoveryPrompt(state.profile)+'\n'+researchInstruction(plan)+'\n'+monid.instruction+(instruction?'\nTask from the user’s connected bot: '+instruction:''),(type,d)=>{
   if(type==='started'){Object.assign(state.mission,d);Object.assign(state.demo,d);save();}
   if(type==='tool'){state.demo.tools.push({tool:d.tool,label:d.label,at:new Date().toISOString()});log('browser',({read_file:'Read Scout’s profile and notes.',write_file:'Updated Scout’s notes.',execute_code:'Checked source details.',browser_console:'Inspected the current page.'})[d.tool]||d.label||d.tool,'discovery');}
  });
@@ -165,9 +172,25 @@ async function executeDemo(instruction='',task=null,replay=null){
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}-raw.json`,JSON.stringify(answer,null,2),{mode:0o600});
  if(stopRequested){state.demo.status='paused';return;}
  if(monid.configured){try{const raw=await readMemoryFile('monid-ledger.json');const ledger=JSON.parse(raw||'null');if(ledger?.mission===state.demo.id)state.monid.runs=ledger.runs.map(r=>({runId:r.runId,provider:r.provider,endpoint:r.endpoint,status:r.status,reservedUSD:r.reservedUSD,httpStatus:r.providerResponse?.httpStatus}));for(const r of state.monid.runs)log('browser',`Monid · ${r.provider} · ${r.status}`,'discovery');}catch{}}
- const parsedOutput=parseJson(answer.output);
+ let parsedOutput=parseJson(answer.output);
  if(task&&parsedOutput.question){task.question=questionSchema.parse(parsedOutput.question);task.status='needs_input';state.demo.status='needs_input';log('attention',task.question.prompt,'task');return;}
- const researched=demoResults(parsedOutput,{searched:state.demo.tools.some(t=>/search/i.test(t.tool))||state.monid?.runs.some(r=>r.status==='COMPLETED'&&r.httpStatus>=200&&r.httpStatus<400)});
+ let researched=demoResults(parsedOutput,{searched:state.demo.tools.some(t=>/search/i.test(t.tool))||state.monid?.runs.some(r=>r.status==='COMPLETED'&&r.httpStatus>=200&&r.httpStatus<400)});
+ state.demo.coverage=sourceCoverage(state.demo.tools,researched.opportunities,state.demo.searchPlan);
+ if(!replay&&state.demo.searchPlan&&needsExpansion(researched.opportunities,state.demo.coverage,state.demo.searchPlan)){
+  fs.writeFileSync(`data/discovery/${state.demo.id}-first-pass.json`,JSON.stringify({answer,coverage:state.demo.coverage},null,2),{mode:0o600});
+  log('working','Expanding the search to more independent sources.','discovery');
+  const remaining=state.demo.searchPlan.sources.filter(s=>!state.demo.coverage.providers.some(p=>p.domain===s.domain));
+  answer=await runAgent(`Continue this same task. The first pass only reached ${state.demo.coverage.providers.length} independent sources and found no verified free match. Expand to these alternatives: ${remaining.slice(0,8).map(s=>s.name+' '+s.url).join('; ')}. Open actual source pages; preserve the user's constraints and earlier evidence. Up to 18 more calls. Return the same JSON contract with the combined useful results, at most 8 opportunities. No fabricated matches.`,(type,d)=>{
+   if(type==='started'){Object.assign(state.mission,d);save();}
+   if(type==='tool'){state.demo.tools.push({tool:d.tool,label:d.label,at:new Date().toISOString()});log('browser',d.label||d.tool,'discovery');}
+  },{sessionId:answer.sessionId});
+  fs.writeFileSync(`data/discovery/${state.demo.id}-raw.json`,JSON.stringify(answer,null,2),{mode:0o600});
+  if(stopRequested){state.demo.status='paused';return;}
+  researched=demoResults(parseJson(answer.output),{searched:true});
+  state.demo.coverage=sourceCoverage(state.demo.tools,researched.opportunities,state.demo.searchPlan);
+ }
+ researched.opportunities=researched.opportunities.filter(consumerOpportunity);
+ await saveObservations(researched.opportunities);
  Object.assign(state.demo,researched,{status:'booking',finishedAt:new Date().toISOString(),sessionId:answer.sessionId});
  fs.mkdirSync('data/discovery',{recursive:true});fs.writeFileSync(`data/discovery/${state.demo.id}.json`,JSON.stringify({answer,...state.demo},null,2),{mode:0o600});
  if(!replay){try{await focusDiscovery();}catch(e){log('attention',e.message,'discovery');}}
@@ -181,7 +204,7 @@ async function executeDemo(instruction='',task=null,replay=null){
   if(state.mission.responseId){try{await instanceCall(`/v1/responses/${state.mission.responseId}/cancel`,{});}catch{}}
   log('attention',state.demo.error,'discovery');
  }
- finally{active=false;state.mission.status=state.demo.status;state.mission.responseId=null;if(task&&task.status==='running'){task.status=state.demo.status==='completed'?'completed':state.demo.status==='paused'?'paused':'failed';task.error=state.demo.error||null;task.errorCode=state.demo.errorCode||null;task.result=state.demo.summary||null;task.finishedAt=new Date().toISOString();}if(task){task.opportunities=structuredClone(state.demo.opportunities||[]);task.activity=structuredClone(state.demo.tools||[]);}await save();setTimeout(drainTaskQueue,0);}
+ finally{active=false;state.mission.status=state.demo.status;state.mission.responseId=null;if(task&&task.status==='running'){task.status=state.demo.status==='completed'?'completed':state.demo.status==='paused'?'paused':'failed';task.error=state.demo.error||null;task.errorCode=state.demo.errorCode||null;task.result=state.demo.summary||null;task.finishedAt=new Date().toISOString();}if(task){task.coverage=state.demo.coverage||null;task.opportunities=structuredClone(state.demo.opportunities||[]);task.activity=structuredClone(state.demo.tools||[]);}await save();setTimeout(drainTaskQueue,0);}
 }
 let queueDraining=false;
 async function drainTaskQueue(){
@@ -190,10 +213,23 @@ async function drainTaskQueue(){
  try{let task;while(!active&&!state.taskQueuePaused&&(task=state.tasks.find(t=>t.status==='queued'))){const replay=task.recoverSavedResearch?readSavedResearch(task):null;delete task.recoverSavedResearch;await executeDemo(taskInstruction(task),task,replay);}}
  finally{queueDraining=false;}
 }
+async function scheduleTick(){
+ if(state.taskQueuePaused)return;
+ const before=state.tasks.filter(t=>t.schedule).map(t=>t.schedule.nextRunAt).join('|');
+ const added=enqueueScheduledTasks(state.tasks,newTask);
+ const changed=before!==state.tasks.filter(t=>t.schedule).map(t=>t.schedule.nextRunAt).join('|');
+ if(added.length||changed)await save();
+ if(!storageStatus.error)setTimeout(drainTaskQueue,0);
+}
+async function setTaskSchedule(id,{enabled}){
+ z.boolean().parse(enabled);const task=findTask(id),parent=task.scheduleId?findTask(task.scheduleId):task;
+ if(!parent.schedule)throw apiError(400,'This task does not repeat.');
+ parent.schedule.enabled=enabled;if(enabled)parent.schedule.nextRunAt=nextOccurrence(recurrenceSpec(parent.schedule));await save();return taskView(parent);
+}
 function findTask(id){const task=state.tasks.find(t=>t.id===id);if(!task)throw apiError(404,'Task not found.');return task;}
 async function addTask(input,{idempotencyKey}={}){
  const task=newTask(input);
- if(idempotencyKey){const prior=state.tasks.find(t=>t.idempotencyKey===idempotencyKey);if(prior){if(prior.text!==task.text)throw apiError(409,'Idempotency-Key already used for a different task.');return prior;}task.idempotencyKey=idempotencyKey;}
+ if(idempotencyKey){const prior=state.tasks.find(t=>t.idempotencyKey===idempotencyKey);if(prior){if(prior.text!==task.text||JSON.stringify(recurrenceSpec(prior.schedule))!==JSON.stringify(recurrenceSpec(task.schedule)))throw apiError(409,'Idempotency-Key already used for a different task.');return prior;}task.idempotencyKey=idempotencyKey;}
  if(!state.onboarded)throw apiError(400,'Save your profile first.');
  state.tasks.push(task);await save();if(storageStatus.error)throw apiError(503,'Could not save the task.');setTimeout(drainTaskQueue,0);return task;
 }
@@ -202,6 +238,7 @@ function readSavedResearch(task){
  if(!/^[a-z0-9-]+$/i.test(task.missionId||''))return null;
  try{return reusableResearch(JSON.parse(fs.readFileSync(`data/discovery/${task.missionId}-raw.json`,'utf8')),task.activity,task.missionId);}catch{return null;}
 }
+async function dismissTasks(input){const tasks=setTaskDismissal(state.tasks,input);await save();if(storageStatus.error)throw apiError(503,'Could not save the change.');return {tasks:tasks.map(taskView)};}
 async function retryTask(id){
  const task=findTask(id);if(!['failed','paused','cancelled'].includes(task.status))throw apiError(409,'Task is already in progress or completed.');
  const invalidResult=task.errorCode==='invalid_agent_result'||(/^\s*\[/.test(task.error||'')&&/"path"/.test(task.error));
@@ -244,7 +281,7 @@ function missionView(id){
 }
 function taskView(task){
  const mission=state.demo?.id===task.missionId?state.demo:(state.missionArchive||[]).find(m=>m.id===task.missionId);
- return {...task,opportunities:task.opportunities||mission?.opportunities||[],activity:task.activity||mission?.tools||[]};
+ return {...task,coverage:sourceCoverage(task.activity||mission?.tools||[],task.opportunities||mission?.opportunities||[],mission?.searchPlan),recurrence:task.schedule||(task.scheduleId?state.tasks.find(t=>t.id===task.scheduleId)?.schedule:null)||null,opportunities:task.opportunities||mission?.opportunities||[],activity:task.activity||mission?.tools||[]};
 }
 async function updateNotes({notes}){
  z.string().max(20000).parse(notes);
@@ -253,12 +290,13 @@ async function updateNotes({notes}){
  try{return await memorySyncPromise;}finally{memorySyncPromise=null;setTimeout(drainTaskQueue,0);}
 }
 export const conciergeApi={
- tasks:()=>state.tasks.map(taskView),task:id=>taskView(findTask(id)),addTask,answerTask:submitAnswer,retryTask,cancelTask,setTaskQueue,
+ sources:()=>({version:SOURCE_MAP_VERSION,categories:CATEGORIES,sources,storage:catalogStorage}),
+ tasks:()=>state.tasks.map(taskView),task:id=>taskView(findTask(id)),addTask,answerTask:submitAnswer,retryTask,cancelTask,setTaskQueue,dismissTasks,setTaskSchedule,
  taskQueue:()=>({paused:!!state.taskQueuePaused,active_task_id:state.tasks.find(t=>t.status==='running')?.id||null}),
  status:()=>({active,queue_paused:!!state.taskQueuePaused,profile_ready:state.onboarded,profile_memory:state.profileMemory||null,current_mission:state.demo?missionView(state.demo.id):null,model:AGENT_MODEL}),
  profile:()=>state.profile,
  updateProfile:async patch=>{await updateProfile(mergeProfilePatch(state.profile,patch));return {profile:state.profile,memory:state.profileMemory};},
- plans:()=>state.bookings.map(j=>({id:j.id,status:j.status,created_at:j.createdAt,updated_at:j.updatedAt||null,offer:j.offer,history:j.history,provider_confirmation:null})),
+ plans:()=>state.bookings.filter(j=>consumerOpportunity(j.offer)).map(j=>({id:j.id,status:j.status,created_at:j.createdAt,updated_at:j.updatedAt||null,offer:j.offer,history:j.history,provider_confirmation:null})),
  mission:missionView,
  start:async({instruction='',idempotencyKey}={})=>{
   const fingerprint=createHash('sha256').update(instruction).digest('hex');
@@ -282,8 +320,10 @@ export const conciergeApi={
  dayPlan,
  calendar:()=>bookingsCalendar(dayPlan().items)
 };
-export function registerConcierge(app){setTimeout(drainTaskQueue,1000);const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
+export function registerConcierge(app){setTimeout(drainTaskQueue,1000);setTimeout(()=>scheduleTick().catch(e=>log('attention',e.message,'schedule')),1500);setInterval(()=>scheduleTick().catch(e=>log('attention',e.message,'schedule')),30000).unref();const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
  app.get('/api/concierge/tasks',(_req,res)=>res.json({tasks:state.tasks}));
+ app.post('/api/concierge/tasks/:id/schedule',wrap(async(req,res)=>res.json(await setTaskSchedule(req.params.id,req.body))));
+ app.post('/api/concierge/tasks/dismiss',wrap(async(req,res)=>res.json(await dismissTasks(req.body))));
  app.post('/api/concierge/tasks',wrap(async(req,res)=>res.status(202).json(await addTask(req.body))));
  app.post('/api/concierge/tasks/:id/answer',wrap(async(req,res)=>res.status(202).json(await submitAnswer(req.params.id,req.body))));
  app.post('/api/concierge/tasks/:id/retry',wrap(async(req,res)=>res.json(await retryTask(req.params.id))));
@@ -327,3 +367,5 @@ export function registerConcierge(app){setTimeout(drainTaskQueue,1000);const wra
  const body={name:'Free SF daily concierge',prompt,schedule:'0 8 * * *',timezone:'America/Los_Angeles',agent:'hermes',enabled};
  const r=state.cron?.id?await control(`/v1/instances/${config().id}/crons/${state.cron.id}`,{enabled},'PATCH'):enabled?await control(`/v1/instances/${config().id}/crons`,body):null;if(r)state.cron={id:r.id||state.cron.id,enabled,nextRun:r.next_run};await save();res.json(publicState());}));
 }
+
+void syncCatalog();
