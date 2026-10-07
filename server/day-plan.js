@@ -32,23 +32,25 @@ export function buildDayPlan(bookings,profile,{now=Date.now(),start=sfDay(now),r
   const o=j.offer,v=o.plannedVisit;
   const dated=!!o.startsAt;
   if(!dated&&!v)continue;
-  const startAt=dated?o.startsAt:v.startsAt;
-  const sourceEnd=dated?(o.endsAt||new Date(ms(startAt)+3600000).toISOString()):v.endsAt;
+  const sourceStart=dated?o.startsAt:v.startsAt;
+  const sourceEnd=dated?(o.endsAt||new Date(ms(sourceStart)+3600000).toISOString()):v.endsAt;
+  const plannedWindow=dated&&v&&ms(v.startsAt)>=ms(sourceStart)&&ms(v.endsAt)<=ms(sourceEnd)&&ms(v.endsAt)>ms(v.startsAt);
+  const startAt=plannedWindow?v.startsAt:sourceStart;
   if(!(ms(sourceEnd)>ms(startAt)))continue;
-  const longVisit=dated&&ms(sourceEnd)-ms(startAt)>3*3600000;
-  const endAt=longVisit?new Date(ms(startAt)+90*60000).toISOString():sourceEnd;
+  const longVisit=!plannedWindow&&dated&&ms(sourceEnd)-ms(startAt)>3*3600000;
+  const endAt=plannedWindow?v.endsAt:longVisit?new Date(ms(startAt)+90*60000).toISOString():sourceEnd;
   const foodText=(o.benefits||[]).filter(b=>b.icon==='food').map(b=>b.label+' '+b.evidence).join(' ');
   const includedFood=/included|complimentary|pizza|appetizers|provided|dinner|meal|drink ticket/i.test(foodText)&&!/not (?:free|included)|purchase|paid|cash.bar|for sale/i.test(foodText);
   const tech=/\bAI\b|engineer|founder|builder|developer|tech week/i.test(o.title+' '+(o.benefitSummary||''));
   const waitlist=/event full|join (?:the )?waitlist|waitlist.only/i.test(o.terms||'');
   const priority=(dated?100:30)+(includedFood?50:0)+(tech?20:0)+(o.category==='Fitness'?10:0);
-  candidates.push({job:j,id:(dated?'event-':'visit-')+j.id,offer:dated?o:{...o,venue:v.venue,sources:[...(o.sources||[]),v.sourceUrl],schedule:v.openingHoursEvidence},startAt,endAt,sourceEnd,priority,waitlist,dated,longVisit});
+  candidates.push({job:j,id:(dated?'event-':'visit-')+j.id,offer:dated?o:{...o,venue:v.venue,sources:[...(o.sources||[]),v.sourceUrl],schedule:v.openingHoursEvidence},startAt,endAt,sourceStart,sourceEnd,priority,waitlist,dated,longVisit,plannedWindow});
  }
  for(const c of candidates.sort((a,b)=>b.priority-a.priority||ms(a.startAt)-ms(b.startAt))){
   if(removed.includes(c.id)||!days.includes(sfDay(c.startAt))||ms(c.startAt)<now)continue;
-  const access=c.dated?(c.longVisit?'90-min visit':'Event'):'Planned visit';
-  if(c.waitlist||!add(c.id,c.offer,c.offer.category==='Fitness'?'fitness':(!c.dated&&c.offer.category==='Meal delivery'?'food':'event'),c.startAt,c.endAt,access,{bookingId:c.job.id,eventWindow:{startsAt:c.startAt,endsAt:c.sourceEnd}})){
-   alternatives.push({...c.job,planId:c.id,alternative:true,access:c.waitlist?'Waitlist':'Alternative',reason:c.waitlist?'Event is full':'Overlaps your plan',offer:{...c.offer,startsAt:c.startAt,endsAt:c.endAt},eventWindow:{startsAt:c.startAt,endsAt:c.sourceEnd}});
+  const access=c.plannedWindow?'Planned visit':c.dated?(c.longVisit?'90-min visit':'Event'):'Planned visit';
+  if(c.waitlist||!add(c.id,c.offer,c.offer.category==='Fitness'?'fitness':(!c.dated&&c.offer.category==='Meal delivery'?'food':'event'),c.startAt,c.endAt,access,{bookingId:c.job.id,eventWindow:{startsAt:c.sourceStart,endsAt:c.sourceEnd}})){
+   alternatives.push({...c.job,planId:c.id,alternative:true,access:c.waitlist?'Waitlist':'Alternative',reason:c.waitlist?'Event is full':'Overlaps your plan',offer:{...c.offer,startsAt:c.startAt,endsAt:c.endAt},eventWindow:{startsAt:c.sourceStart,endsAt:c.sourceEnd}});
   }
  }
  alternatives.sort((a,b)=>ms(a.offer.startsAt)-ms(b.offer.startsAt));

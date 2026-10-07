@@ -26,6 +26,14 @@ test('conflicting events are alternatives and removed stops do not return',()=>{
  assert.ok(!plan.items.some(i=>i.id==='anthony-lunch-2026-10-08'));assert.equal(plan.items.find(i=>i.id==='event-a').access,'90-min visit');
 });
 test('Pacific day clock observes daylight saving',()=>{assert.equal(atMinute('2026-10-07',480),'2026-10-07T15:00:00.000Z');assert.equal(atMinute('2026-12-07',480),'2026-12-07T16:00:00.000Z')});
+test('a valid planned breakfast visit leaves time for the next event and retains source hours',()=>{
+ const breakfast={id:'coffee',status:'ready',offer:{title:'Coffee',freeVerified:true,priceToday:0,startsAt:'2026-10-08T08:00:00-07:00',endsAt:'2026-10-08T10:00:00-07:00',venue:'Cafe',plannedVisit:{startsAt:'2026-10-08T08:00:00-07:00',endsAt:'2026-10-08T08:45:00-07:00'}}};
+ const next={id:'next',status:'ready',offer:{title:'Build',freeVerified:true,priceToday:0,startsAt:'2026-10-08T10:00:00-07:00',endsAt:'2026-10-08T12:00:00-07:00',venue:'Studio'}};
+ const plan=buildDayPlan([breakfast,next],profile,{now});
+ assert.equal(plan.items.length,2);assert.equal(plan.items[0].offer.endsAt,breakfast.offer.plannedVisit.endsAt);assert.equal(plan.items[0].eventWindow.endsAt,breakfast.offer.endsAt);
+ breakfast.offer.plannedVisit.endsAt='2026-10-08T11:00:00-07:00';
+ assert.equal(buildDayPlan([breakfast,next],profile,{now}).items.length,1);
+});
 test('retained assistance records never refill the consumer calendar',()=>{
  const assistance={id:'old',status:'ready',offer:{title:'Hygiene Hub',url:'https://www.stanthonysf.org/services/hygiene-hub/',freeVerified:true,priceToday:0,kind:'offer',plannedVisit:{startsAt:'2026-10-08T16:00:00Z',endsAt:'2026-10-08T17:00:00Z',venue:'150 Golden Gate'}}};
  assert.equal(buildDayPlan([assistance],profile,{now}).items.length,0);
