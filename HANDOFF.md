@@ -61,4 +61,4 @@ Partial profile updates must pass through `mergeProfilePatch`: only explicitly s
 
 ## Application layout
 
-`src/workspace.css` provides the app shell with a horizontal pill view selector in the page title row, between the title and action buttons. The overview starts with the compact task inbox and `AgendaOverview` upcoming itinerary, plus agent status and controls. Saved offers are expandable below the agenda. Clicking a scheduled stop opens that stop in Calendar. Keep operational content first; do not bring back the slogan hero, decorative offer cards, or promotional footer.
+`src/workspace.css` provides the app shell with a fixed unified header containing the brand, page title, horizontal view selector, action buttons and profile. The overview starts with the compact task inbox and `AgendaOverview` upcoming itinerary, plus agent status and controls. Saved offers are expandable below the agenda. Clicking a scheduled stop opens that stop in Calendar. Keep operational content first; do not bring back the slogan hero, decorative offer cards, or promotional footer.
