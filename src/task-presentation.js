@@ -43,6 +43,7 @@ export function completedTaskCard(task,bookings=[]){
  let when='';
  if(start){const opts={timeZone:'America/Los_Angeles'};when=new Date(start).toLocaleDateString('en-US',{...opts,weekday:'short',month:'short',day:'numeric'})+' · '+new Date(start).toLocaleTimeString('en-US',{...opts,hour:'numeric',minute:'2-digit'});if(end)when+='–'+new Date(end).toLocaleTimeString('en-US',{...opts,hour:'numeric',minute:'2-digit'});}
  const where=(offer.venue||'').split(';')[0].replace(/,?\s*San Francisco(?:,?\s*CA)?(?:\s*\d{5})?$/i,'');
- const headline=offer.benefits?.[0]?.label||offer.title;
- return {matched:true,offer,headline,subheading:offer.title,where,when,arranged,next:onSite?`Walk in${signupTime?' · from '+signupTime:''}`:arranged?(offer.kind==='event'?(waitlisted?'Waitlist joined':needsApproval?'Request sent · awaiting approval':'Registered'):offer.kind==='trial'?'Pass ready':'Ready to use'):(progress[job?.status]||'Found'),action:onSite?'Directions':offer.kind==='event'?'View event':'View pass',href:onSite?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(((offer.venue.match(/sign-up at (.+)$/i)?.[1])||where)+', San Francisco, CA'):offer.url};
+ const headline=offer.title;
+ const subheading=offer.benefits?.[0]?.label||'';
+ return {matched:true,offer,headline,subheading,where,when,arranged,next:onSite?`Walk in${signupTime?' · from '+signupTime:''}`:arranged?(offer.kind==='event'?(waitlisted?'Waitlist joined':needsApproval?'Request sent · awaiting approval':'Registered'):offer.kind==='trial'?'Pass ready':'Ready to use'):(progress[job?.status]||'Found'),action:onSite?'Directions':offer.kind==='event'?'View event':'View pass',href:onSite?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(((offer.venue.match(/sign-up at (.+)$/i)?.[1])||where)+', San Francisco, CA'):offer.url};
 }

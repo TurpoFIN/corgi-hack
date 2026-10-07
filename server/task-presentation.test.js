@@ -25,7 +25,7 @@ test('dismissed completions leave recent list but remain counted for today',()=>
 test('completed result cards expose benefit, source timing and the next step',async()=>{
  const {completedTaskCard}=await import('../src/task-presentation.js');
  const card=completedTaskCard({opportunities:[{title:'Hygiene Hub',freeVerified:true,priceToday:0,benefits:[{label:'Free shower access'}],schedule:'Sign-ups begin at 6am.',terms:'Sign up at St. Boniface Church before accessing showers.',venue:'150 Golden Gate Avenue; sign-up at 133 Golden Gate Avenue',url:'https://example.com/shower'}]});
- assert.equal(card.headline,'Free shower access');assert.equal(card.next,'Walk in · from 6am');assert.equal(card.action,'Directions');assert.match(decodeURIComponent(card.href),/133 Golden Gate Avenue, San Francisco, CA/);
+ assert.equal(card.headline,'Hygiene Hub');assert.equal(card.subheading,'Free shower access');assert.equal(card.next,'Walk in · from 6am');assert.equal(card.action,'Directions');assert.match(decodeURIComponent(card.href),/133 Golden Gate Avenue, San Francisco, CA/);
  assert.equal(completedTaskCard({opportunities:[]}).action,'Search more broadly');
 });
 
