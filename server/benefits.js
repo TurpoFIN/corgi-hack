@@ -1,0 +1,12 @@
+import {z} from 'zod';
+export const benefitSchema=z.object({
+ icon:z.enum(['ticket','food','fitness','classes','pool','trainer','music','culture','duration','delivery','savings','location']),
+ label:z.string().trim().min(2).max(64),
+ evidence:z.string().trim().min(5).max(400)
+});
+export const benefitFields={
+ benefitSummary:z.string().trim().max(260).default(''),
+ benefits:z.array(benefitSchema).max(4).default([]),
+ benefitCaveat:z.string().trim().max(240).default('')
+};
+export const benefitContextSchema=z.object(benefitFields);

@@ -31,3 +31,7 @@ Calendar export creates tentative personal events and does not imply Google Cale
 This repository intentionally contains no API keys, private profile data, Agent37 instance identity, browser receipts, or local InsForge credentials. A fresh checkout needs the setup in README.md. Existing configured workspaces should preserve `.env.local`, `.insforge/`, and `data/`.
 
 Use `npm test` and `npm run build`, then verify the actual local UI. A build does not establish that a provider accepted a registration. Preserve the exact model requirement: `openai/gpt-6.1-sol`.
+
+## Benefit context
+
+Discovery results carry `benefitSummary`, `benefits` (icon, label, source evidence), and `benefitCaveat`. `src/BenefitContext.jsx` renders these consistently on event rows, pass cards, offers under review, and detail views. Preserve source-backed inclusions: free entry does not imply free food. `server/benefits.js` validates supported icon names and field lengths. To enrich older records with reviewed context, stop the local app and run `node scripts/enrich-offers.mjs path/to/reviewed-benefits.json`; it backs up the document before updating both research results and booking snapshots.

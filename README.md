@@ -35,7 +35,7 @@ Chromium runs in the desktop image and is accessed over CDP; no additional brows
 2. Select **Take care of my week**. Scout searches the live web through Agent37 and reads actual source pages.
 3. Follow progress in the app or open the live Agent37 computer.
 4. Eligible offers enter a persistent booking queue: queued, preparing, booking, ready. Pause and resume without losing the queue.
-5. Open event and pass cards for details, source links, and job history. Remove a plan or restore it later.
+5. Open event and pass cards for concrete benefit summaries, illustrated inclusions, important conditions, source links, and job history. Remove a plan or restore it later.
 6. Export ready events to a calendar file. Entries are personal plans with tentative status.
 
 Offer prices and eligibility come from the source. Paid or unverified offers remain under review. Internal workflow completion and provider-issued confirmations are separate records. The provider workflow supports secure handoff for login, verification, payment details, and consent.
